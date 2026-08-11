@@ -1,8 +1,10 @@
 import { useSubscription } from '@/hooks/useSubscription';
-import { useTheme } from '@/provider/ThemeProvider';
-import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
-import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Colors, Spacing, Typography } from '@/theme';
+import { IconButton } from '@/components/ui/IconButton';
+import { useAuthStore } from '@/store/auth.store';
+import React, { useEffect } from 'react';
+import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PricingCard } from './PricingCard';
 
 interface PremiumModalProps {
@@ -11,19 +13,30 @@ interface PremiumModalProps {
 }
 
 export const PremiumModal: React.FC<PremiumModalProps> = ({ visible, onClose }) => {
-    const theme = useTheme();
-    const { plans, loading, subscribe } = useSubscription();
+    const { plans, loading, error, subscribe } = useSubscription();
+    const insets = useSafeAreaInsets();
+    const [notice, setNotice] = React.useState<string | null>(null);
+    const user = useAuthStore((s) => s.user);
+
+    useEffect(() => {
+        if (user && user.tier !== 'free' && visible) {
+            setNotice(`Welcome to ${String(user.tier).toUpperCase()} — enjoy your expanded limits.`);
+            const t = setTimeout(onClose, 1400);
+            return () => clearTimeout(t);
+        }
+    }, [user, visible, onClose]);
 
     return (
-        <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
-            <View style={[styles.container, { backgroundColor: theme.colors.neutral[50] }]}>
+        <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+            <View style={[styles.container, { paddingTop: insets.top + 10 }]}>
                 <View style={styles.header}>
-                    <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                        <Ionicons name="close" size={24} color={theme.colors.neutral[900]} />
-                    </TouchableOpacity>
-                    <Text style={[theme.typography.h2, styles.headerTitle]}>Upgrade to Glimms Pro</Text>
-                    <Text style={[theme.typography.body, styles.subtitle]}>
-                        Unlock personalized AI insights and unlimited style suggestions.
+                    <View style={styles.closeWrap}>
+                        <IconButton icon="close" accessibilityLabel="Close paywall" onPress={onClose} />
+                    </View>
+                    <Text style={styles.label}>GLIMMS PLANS</Text>
+                    <Text style={styles.headerTitle}>Upgrade to Glimms</Text>
+                    <Text style={styles.subtitle}>
+                        Unlock higher scan limits, priority AI processing and climate-aware styling.
                     </Text>
                 </View>
 
@@ -32,15 +45,27 @@ export const PremiumModal: React.FC<PremiumModalProps> = ({ visible, onClose }) 
                         <PricingCard
                             key={plan.id}
                             plan={plan}
-                            onSelect={subscribe}
+                            onSelect={async (id) => {
+                                setNotice(null);
+                                const result = await subscribe(id);
+                                if (result === 'cancelled') setNotice('Checkout closed — no charge was made.');
+                                if (result === 'pending') setNotice('Confirming your payment… this can take a minute.');
+                            }}
                             loading={loading}
                         />
                     ))}
 
-                    <TouchableOpacity style={styles.restoreButton}>
-                        <Text style={[theme.typography.caption, { color: theme.colors.neutral[500] }]}>
-                            Restore Purchases
-                        </Text>
+                    {loading && (
+                        <View style={styles.statusRow}>
+                            <ActivityIndicator color={Colors.gold} />
+                            <Text style={styles.statusText}>Opening secure checkout…</Text>
+                        </View>
+                    )}
+                    {!!error && <Text style={styles.error}>{error}</Text>}
+                    {!!notice && <Text style={styles.notice}>{notice}</Text>}
+
+                    <TouchableOpacity style={styles.maybeLaterButton} onPress={onClose}>
+                        <Text style={styles.maybeLaterText}>Maybe later</Text>
                     </TouchableOpacity>
                 </ScrollView>
             </View>
@@ -51,33 +76,52 @@ export const PremiumModal: React.FC<PremiumModalProps> = ({ visible, onClose }) 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
+        backgroundColor: Colors.bg,
     },
     header: {
-        padding: 24,
-        paddingTop: 40,
+        paddingHorizontal: Spacing.lg,
+        paddingBottom: Spacing.md,
         alignItems: 'center',
     },
-    closeButton: {
+    closeWrap: {
         position: 'absolute',
-        top: 20,
-        right: 20,
+        top: 0,
+        right: Spacing.lg,
         zIndex: 10,
     },
+    label: { fontSize: 11, letterSpacing: 2, color: Colors.gold, marginBottom: 6 },
     headerTitle: {
         textAlign: 'center',
-        marginBottom: 8,
+        fontFamily: Typography.serif,
+        fontSize: 26,
+        fontWeight: '600',
+        color: Colors.text,
     },
     subtitle: {
         textAlign: 'center',
-        color: '#666',
-        paddingHorizontal: 20,
+        color: Colors.mid,
+        fontSize: 13,
+        lineHeight: 19,
+        marginTop: 6,
+        paddingHorizontal: Spacing.md,
     },
     scrollContent: {
-        padding: 20,
-        paddingBottom: 40,
+        padding: Spacing.lg,
+        paddingTop: 12,
+        paddingBottom: 44,
     },
-    restoreButton: {
+    statusRow: { flexDirection: 'row', alignItems: 'center', gap: 10, justifyContent: 'center', marginTop: 4 },
+    statusText: { color: Colors.mid, fontSize: 13 },
+    error: { color: Colors.error, fontSize: 13, textAlign: 'center', marginTop: 12 },
+    notice: { color: '#F59E0B', fontSize: 13, textAlign: 'center', marginTop: 12 },
+    maybeLaterButton: {
+        marginTop: Spacing.md,
         alignItems: 'center',
-        marginTop: 8,
+        padding: 10,
+    },
+    maybeLaterText: {
+        color: Colors.mid,
+        fontSize: 13,
+        fontWeight: '500',
     },
 });

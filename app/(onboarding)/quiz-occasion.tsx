@@ -1,19 +1,24 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView } from 'react-native'
 import { useRouter } from 'expo-router'
 import { Colors, Radius, Spacing, Typography } from '@/theme'
 import { BackButton, GoldButton, ProgressDots } from '@/components/buttons'
+import { useOnboardingStore } from '@/store/onboarding.store'
+import { AppIcon } from '@/components/ui/Icon'
 
 const OCCASIONS = [
-  { id: 'work',   label: 'Work',      desc: 'Office, meetings, professional', emoji: '💼' },
-  { id: 'casual', label: 'Casual',    desc: 'Everyday, relaxed, comfortable', emoji: '☀️' },
-  { id: 'events', label: 'Events',    desc: 'Dinners, parties, occasions',    emoji: '🌙' },
-  { id: 'mix',    label: 'All of it', desc: 'I dress for everything',         emoji: '⚡' },
+  { id: 'work',   label: 'Work',      desc: 'Office, meetings, professional', icon: 'briefcase-outline' },
+  { id: 'casual', label: 'Casual',    desc: 'Everyday, relaxed, comfortable', icon: 'sunny-outline' },
+  { id: 'events', label: 'Events',    desc: 'Dinners, parties, occasions',    icon: 'moon-outline' },
+  { id: 'mix',    label: 'All of it', desc: 'I dress for everything',         icon: 'flash-outline' },
 ]
 
 export default function QuizOccasionScreen() {
   const router = useRouter()
-  const [selected, setSelected] = useState<string | null>(null)
+  // The quiz supports one primary occasion for MVP; stored as a list per API shape.
+  const selected = useOnboardingStore((s) => s.answers.occasions[0] ?? null)
+  const setOccasions = useOnboardingStore((s) => s.setOccasions)
+  const setSelected = (id: string) => setOccasions(id === 'mix' ? ['work', 'casual', 'events'] : [id])
 
   return (
     <SafeAreaView style={styles.container}>
@@ -36,13 +41,15 @@ export default function QuizOccasionScreen() {
               activeOpacity={0.8}
               style={[styles.row, active && styles.rowActive]}
             >
-              <Text style={{ fontSize: 22, width: 32 }}>{o.emoji}</Text>
+              <View style={[qoStyles.iconWrap, active && qoStyles.iconWrapActive]}>
+                <AppIcon name={o.icon} size={20} color={active ? Colors.gold : Colors.mid} />
+              </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.rowLabel}>{o.label}</Text>
                 <Text style={styles.rowDesc}>{o.desc}</Text>
               </View>
               <View style={[styles.radio, active && styles.radioActive]}>
-                {active && <Text style={{ color: Colors.black, fontSize: 10 }}>✓</Text>}
+                {active && <AppIcon name="checkmark" size={11} color={Colors.black} />}
               </View>
             </TouchableOpacity>
           )
@@ -83,4 +90,14 @@ const styles = StyleSheet.create({
   },
   radioActive: { borderColor: Colors.gold, backgroundColor: Colors.gold },
   footer: { padding: Spacing.lg, paddingBottom: Spacing.xl },
+})
+
+const qoStyles = StyleSheet.create({
+  iconWrap: {
+    width: 40, height: 40, borderRadius: Radius.sm,
+    backgroundColor: Colors.card2,
+    borderWidth: 1, borderColor: Colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  iconWrapActive: { backgroundColor: 'rgba(191,146,69,0.15)', borderColor: Colors.gold },
 })

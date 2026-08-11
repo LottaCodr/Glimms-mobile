@@ -10,6 +10,8 @@ import {
   TextStyle,
 } from 'react-native'
 import { Colors, Radius, Spacing, Typography } from '@/theme'
+import { AppIcon } from '@/components/ui/Icon'
+import type { IoniconName } from '@/components/ui/Icon'
 
 // ─── GoldButton ──────────────────────────────────────────────────────────────
 interface GoldButtonProps {
@@ -97,7 +99,8 @@ export const OutfitCard: React.FC<OutfitCardProps> = ({ outfit, compact }) => (
         <View style={{ flex: 1 }}>
           <Text style={[styles.outfitName, compact && { fontSize: 14 }]}>{outfit.name}</Text>
           <View style={styles.occasionChip}>
-            <Text style={styles.occasionText}>⚡ {outfit.occasion}</Text>
+            <AppIcon name="flash" size={10} color={Colors.gold} style={{ marginRight: 4 }} />
+            <Text style={styles.occasionText}>{outfit.occasion}</Text>
           </View>
         </View>
         <View style={styles.scoreBox}>
@@ -119,23 +122,23 @@ export const OutfitCard: React.FC<OutfitCardProps> = ({ outfit, compact }) => (
 )
 
 // ─── WardrobeItemTile ────────────────────────────────────────────────────────
-const CAT_EMOJI: Record<string, string> = {
-  Tops: '👕', Bottoms: '👖', Shoes: '👟', Outerwear: '🧥',
+const CATEGORY_ICON: Record<string, IoniconName> = {
+  Tops: 'shirt-outline', Bottoms: 'resize-outline', Shoes: 'footsteps-outline', Outerwear: 'snow-outline',
 }
 interface WardrobeItem { id: number; name: string; cat: string; c1: string; c2: string }
 export const WardrobeItemTile: React.FC<{ item: WardrobeItem }> = ({ item }) => (
   <View style={styles.tile}>
     <View style={[styles.tileImage, { backgroundColor: item.c1 }]}>
-      <Text style={styles.tileEmoji}>{CAT_EMOJI[item.cat]}</Text>
+      <AppIcon name={CATEGORY_ICON[item.cat] ?? 'shirt-outline'} size={24} color={Colors.card2} />
     </View>
     <Text style={styles.tileName} numberOfLines={1}>{item.name}</Text>
   </View>
 )
 
 // ─── StatBox ─────────────────────────────────────────────────────────────────
-export const StatBox: React.FC<{ label: string; value: string; emoji: string }> = ({ label, value, emoji }) => (
+export const StatBox: React.FC<{ label: string; value: string; icon: IoniconName }> = ({ label, value, icon }) => (
   <View style={styles.statBox}>
-    <Text style={{ fontSize: 18 }}>{emoji}</Text>
+    <AppIcon name={icon} size={17} color={Colors.gold} />
     <Text style={styles.statValue}>{value}</Text>
     <Text style={styles.statLabel}>{label}</Text>
   </View>
@@ -153,12 +156,12 @@ export const Divider: React.FC<{ label?: string }> = ({ label }) => (
 // ─── UpgradeCard ─────────────────────────────────────────────────────────────
 export const UpgradeCard: React.FC<{ onPress: () => void }> = ({ onPress }) => (
   <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.upgradeCard}>
-    <Text style={{ fontSize: 22 }}>👑</Text>
+    <AppIcon name="diamond-outline" size={24} color={Colors.gold} />
     <View style={{ flex: 1, marginLeft: Spacing.md }}>
       <Text style={styles.upgradeTitle}>Upgrade to Premium</Text>
       <Text style={styles.upgradeSub}>Unlimited scans · Climate intelligence</Text>
     </View>
-    <Text style={[styles.upgradeTitle, { color: Colors.gold }]}>›</Text>
+    <AppIcon name="chevron-forward" size={18} color={Colors.gold} />
   </TouchableOpacity>
 )
 
