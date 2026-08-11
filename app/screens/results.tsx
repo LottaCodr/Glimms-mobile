@@ -6,6 +6,7 @@ import {
 import { useRouter } from 'expo-router'
 import { Colors, Radius, Spacing } from '@/theme'
 import { OutfitCard } from '@/components/buttons'
+import { AppIcon } from '@/components/ui/Icon'
 
 const OUTFITS = [
   { id: 1, name: 'The Sharp Casual',  occasion: 'Work',    score: 94, items: ['White Oxford', 'Navy Blazer', 'Black Jeans', 'White Sneakers'],    colors: ['#F0EDE5', '#1C2E50', '#141414', '#ECEAE4'] },
@@ -28,15 +29,16 @@ export default function ResultsScreen() {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backTxt}>‹</Text>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} accessibilityLabel="Back">
+          <AppIcon name="chevron-back" size={18} color={Colors.mid} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>Your Outfits</Text>
           <Text style={styles.subtitle}>47 combinations generated</Text>
         </View>
         <View style={styles.aiBadge}>
-          <Text style={styles.aiBadgeText}>AI ✦</Text>
+          <AppIcon name="sparkles-outline" size={11} color={Colors.gold} />
+          <Text style={[styles.aiBadgeText, { marginLeft: 4 }]}>AI</Text>
         </View>
       </View>
 
@@ -69,17 +71,24 @@ export default function ResultsScreen() {
             <View style={styles.actionRow}>
               <TouchableOpacity
                 onPress={() => toggleSave(outfit.id)}
-                style={[styles.actionBtn, saved.includes(outfit.id) && styles.actionBtnSaved]}
+                style={[styles.actionBtn, styles.actionBtnRow, saved.includes(outfit.id) && styles.actionBtnSaved]}
               >
+                <AppIcon
+                  name={saved.includes(outfit.id) ? 'heart' : 'heart-outline'}
+                  size={13}
+                  color={saved.includes(outfit.id) ? Colors.gold : Colors.mid}
+                  style={{ marginRight: 5 }}
+                />
                 <Text style={[styles.actionBtnText, saved.includes(outfit.id) && { color: Colors.gold }]}>
-                  {saved.includes(outfit.id) ? '❤️ Saved' : '🤍 Save'}
+                  {saved.includes(outfit.id) ? 'Saved' : 'Save'}
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.actionBtn}>
-                <Text style={styles.actionBtnText}>🔄 Remix</Text>
+              <TouchableOpacity style={[styles.actionBtn, styles.actionBtnRow]}>
+                <AppIcon name="refresh-outline" size={13} color={Colors.mid} style={{ marginRight: 5 }} />
+                <Text style={styles.actionBtnText}>Remix</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.shareBtn}>
-                <Text style={{ fontSize: 14 }}>↗</Text>
+                <AppIcon name="share-social-outline" size={14} color={Colors.mid} />
               </TouchableOpacity>
             </View>
           </View>
@@ -100,10 +109,10 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.sm,
     alignItems: 'center', justifyContent: 'center',
   },
-  backTxt: { fontSize: 24, color: Colors.mid, lineHeight: 28, marginTop: -2 },
   title: { fontSize: 16, fontWeight: '600', color: Colors.text },
   subtitle: { fontSize: 11, color: Colors.mid },
   aiBadge: {
+    flexDirection: 'row', alignItems: 'center',
     backgroundColor: 'rgba(191,146,69,0.1)',
     borderWidth: 1, borderColor: Colors.gold,
     borderRadius: Radius.xs, paddingHorizontal: 8, paddingVertical: 4,
@@ -125,6 +134,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.sm,
     alignItems: 'center', justifyContent: 'center',
   },
+  actionBtnRow: { flexDirection: 'row', gap: 0 },
   actionBtnSaved: { borderColor: Colors.gold, backgroundColor: 'rgba(191,146,69,0.08)' },
   actionBtnText: { fontSize: 12, color: Colors.mid },
   shareBtn: {

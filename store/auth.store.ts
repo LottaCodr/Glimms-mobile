@@ -1,53 +1,119 @@
-import { create } from 'zustand';
-import * as SecureStore from 'expo-secure-store';
-import { apiClient } from '@/services/api.client';
-
-interface User { sub: string; email: string; name?: string; tier: 'free' | 'premium' | 'pro'}
+/**
+ * Auth state — guide §3/§16.1.
+ *
+ * Tokens live in expo-secure-store (never AsyncStorage). The axios client
+ * refreshes/rotates them; this store owns the user profile and session
+ * lifecycle. `onAuthFailure` (fired by the API client when a refresh fails)
+ * signs the user out so the root layout guard can redirect to onboarding.
+ */
+import { create } from "zustand";
+import {
+    onAuthFailure,
+    refreshTokens,
+    tokenStore,
+} from "@/services/api.client";
+import * as authApi from "@/services/auth.services";
+import { notificationService } from "@/services/notifications.service";
+import { analyticsService } from "@/services/analytics.service";
+import { wsService } from "@/services/websocket.service";
+import type { User } from "@/types/api";
 
 interface AuthState {
     user: User | null;
+    /** True while the initial session is being restored. */
     isLoading: boolean;
+    isAuthenticated: boolean;
+    /** FCM/APNs token registered for this device (for logout cleanup). */
+    pushToken: string | null;
+
     hydrateAuth: () => Promise<void>;
-    setSession: (accessToken: string, refreshToken: string) => Promise<void>;
+    login: (email: string, password: string) => Promise<void>;
+    register: (email: string, password: string, name?: string) => Promise<void>;
+    setUser: (user: User | null) => void;
+    refreshUser: () => Promise<void>;
     logout: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>((set)=> ({
-    user: null,
-    isLoading: true,
+export const useAuthStore = create<AuthState>((set, get) => {
+    // Sign out locally whenever the API client gives up on refresh.
+    onAuthFailure(() => {
+        wsService.disconnect();
+        set({ user: null, isAuthenticated: false });
+    });
 
-    // hydrateAuth does the same as loadSession
-    hydrateAuth: async () => {
-        try{
-            const token = await SecureStore.getItemAsync('glimms_access_token');
-            if (token) {
-                apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-                const { data } = await apiClient.get('/api/users/me');
-                set({ user: data, isLoading: false });
-            } else {
-                set({ isLoading: false });
-            }
-        } catch {
-            await SecureStore.deleteItemAsync('glimms_access_token');
-            set({ isLoading: false });
+    async function afterTokens(clearPush = true) {
+        const user = await authApi.fetchMe();
+        set({ user, isAuthenticated: true, isLoading: false });
+        if (clearPush) {
+            // Register for design-ready pushes once authenticated (§13).
+            notificationService
+                .registerDeviceToken()
+                .then((token) => set({ pushToken: token }))
+                .catch(() => {});
         }
-    },
-
-    setSession: async (accessToken, refreshToken) => {
-        await SecureStore.setItemAsync('glimms_access_token', accessToken);
-        await SecureStore.setItemAsync('glimms_refresh_token', refreshToken);
-        apiClient.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
-        const { data } = await apiClient.get('/api/users/me');
-        set({ user: data })
-    },
-
-    logout: async () => {
-        const refresh = await SecureStore.getItemAsync('glimms_refresh_token');
-        if (refresh) await apiClient.post('ap/auth/logout', { refreshToken: refresh}).catch(() => {});
-        await SecureStore.deleteItemAsync('glimms_access_token');
-        await SecureStore.deleteItemAsync('glimms_refresh_token');
-        delete apiClient.defaults.headers.common['Authorization'];
-        set({ user: null });
     }
 
-}));
+    return {
+        user: null,
+        isLoading: true,
+        isAuthenticated: false,
+        pushToken: null,
+
+        /** Splash/boot: restore session, refresh fallback, then route (guide §16.1). */
+        hydrateAuth: async () => {
+            try {
+                const access = await tokenStore.getAccessToken();
+                if (!access) {
+                    set({ isLoading: false });
+                    return;
+                }
+                // Proactive refresh when the access token is past its expiry window.
+                if (await tokenStore.isAccessTokenStale()) {
+                    await refreshTokens().catch(() => null);
+                }
+                const user = await authApi.fetchMe();
+                set({ user, isAuthenticated: true, isLoading: false });
+                // Sessions restored on app restart still need a push registration (§13).
+                notificationService
+                    .registerDeviceToken()
+                    .then((token) => set({ pushToken: token }))
+                    .catch(() => {});
+            } catch {
+                await tokenStore.clear();
+                set({ user: null, isAuthenticated: false, isLoading: false });
+            }
+        },
+
+        login: async (email, password) => {
+            const tokens = await authApi.login({ email, password });
+            await tokenStore.save(tokens);
+            await afterTokens();
+            analyticsService.track("login", { method: "email" });
+        },
+
+        register: async (email, password, name) => {
+            const tokens = await authApi.register({ email, password, name });
+            await tokenStore.save(tokens);
+            await afterTokens();
+            analyticsService.track("register", { method: "email" });
+        },
+
+        setUser: (user) => set({ user, isAuthenticated: !!user }),
+
+        refreshUser: async () => {
+            const user = await authApi.fetchMe();
+            set({ user });
+        },
+
+        logout: async () => {
+            const { pushToken } = get();
+            await Promise.all([
+                authApi.logout(),
+                notificationService.removeDeviceToken(pushToken),
+            ]);
+            wsService.disconnect();
+            await tokenStore.clear();
+            set({ user: null, isAuthenticated: false, pushToken: null });
+        },
+    };
+});

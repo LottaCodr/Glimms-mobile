@@ -1,4 +1,5 @@
 import { useTheme } from "@/provider/ThemeProvider";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -60,7 +61,7 @@ export default function OnboardingIntro() {
 
     // Zustand auth store
     const isAuthenticated = useAuthStore(state => state.isAuthenticated);
-    const hydrate = useAuthStore(state => state.hydrate);
+    const hydrate = useAuthStore(state => state.hydrateAuth);
 
     // Only for initial hydration/loading state
     const [checkingAuth, setCheckingAuth] = useState(true);
@@ -79,7 +80,7 @@ export default function OnboardingIntro() {
     // If authenticated, route to home
     useEffect(() => {
         if (!checkingAuth && isAuthenticated) {
-            router.replace("/home");
+            router.replace("/(tabs)/home");
         }
     }, [checkingAuth, isAuthenticated, router]);
 
@@ -103,10 +104,10 @@ export default function OnboardingIntro() {
     }, [theme]);
 
     const handleGetStarted = useCallback(() => {
-        router.push("/register");
+        router.push("/(auth)/register");
     }, [router]);
     const handleSignIn = useCallback(() => {
-        router.push("/login");
+        router.push("/(auth)/login");
     }, [router]);
 
     const SCREEN_WIDTH = Dimensions.get("window").width;
@@ -162,9 +163,7 @@ export default function OnboardingIntro() {
                 {/* Logo */}
                 <View style={styles.logoRow}>
                     <View style={[styles.logoCircle, { backgroundColor: primaryColor + "26" }]}>
-                        <Text style={[styles.logoIcon, { color: primaryColor, textShadowColor: primaryColor + "a8", textShadowRadius: 6, textShadowOffset: { width: 0, height: 1 } }]}>
-                            ✨
-                        </Text>
+                        <Ionicons name="sparkles" size={26} color={primaryColor} />
                     </View>
                     <Text style={[styles.logoText, { color: textColor }]}>GLIMMS</Text>
                 </View>
@@ -367,10 +366,7 @@ const styles = StyleSheet.create({
         marginRight: 12,
     },
 
-    logoIcon: {
-        fontSize: 23,
-        fontWeight: "400",
-    },
+
 
     logoText: {
         fontSize: 19,
@@ -425,8 +421,6 @@ const styles = StyleSheet.create({
         justifyContent: "center",
         alignItems: "center",
         overflow: "hidden",
-        transitionProperty: "width, background-color, opacity",
-        transitionDuration: "0.3s",
     },
     dotInnerHighlight: {
         width: 12,

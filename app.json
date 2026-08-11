@@ -39,8 +39,20 @@
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "color": "#BF9245"
+        }
+      ]
     ],
+    "extra": {
+      "apiUrl": null,
+      "wsUrl": null,
+      "stripePremiumPriceId": null,
+      "stripeProPriceId": null
+    },
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true

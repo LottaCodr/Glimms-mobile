@@ -1,39 +1,27 @@
-import { View, Text, Pressable, Animated, Image } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { useTheme } from "@/provider/ThemeProvider";
+import React, { useEffect, useRef } from "react";
+import { Animated, Pressable, Text, View } from "react-native";
+import { Image } from "expo-image";
+import { AppIcon } from "@/components/ui/Icon";
 import { useUploadStore } from "@/store/upload.store";
-import React, { useRef } from "react";
+import { Colors, Radius, Spacing, Typography } from "@/theme";
 
 export function UploadDropzone({ onPick }: { onPick: () => void }) {
-    const theme = useTheme();
     const images = useUploadStore((s) => s.images);
 
-    // Animation for a subtle pulsing icon to attract user's attention
+    // Subtle pulse to attract attention when empty
     const scaleAnim = useRef(new Animated.Value(1)).current;
-
-    React.useEffect(() => {
-        Animated.loop(
+    useEffect(() => {
+        const loop = Animated.loop(
             Animated.sequence([
-                Animated.timing(scaleAnim, {
-                    toValue: 1.07,
-                    duration: 800,
-                    useNativeDriver: true,
-                }),
-                Animated.timing(scaleAnim, {
-                    toValue: 1,
-                    duration: 700,
-                    useNativeDriver: true,
-                }),
-            ])
-        ).start();
+                Animated.timing(scaleAnim, { toValue: 1.07, duration: 800, useNativeDriver: true }),
+                Animated.timing(scaleAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
+            ]),
+        );
+        loop.start();
+        return () => loop.stop();
     }, [scaleAnim]);
 
-    // Use brand.secondary to substitute the missing 'success' color
-    // Use a neutral green fallback for background/icon/text highlight when images exist
-    const highlightColor = images.length > 0 ? (theme.colors.brand?.secondary || "#34c759") : theme.colors.brand.primary;
-    const highlightColorBg = images.length > 0
-        ? (theme.colors.brand?.secondary || "#34c759") + "15"
-        : theme.colors.brand.primary + "08";
+    const hasImages = images.length > 0;
 
     return (
         <Pressable
@@ -41,97 +29,75 @@ export function UploadDropzone({ onPick }: { onPick: () => void }) {
             style={{
                 borderWidth: 2,
                 borderStyle: "dashed",
-                borderColor: highlightColor,
-                borderRadius: theme.radius.lg,
-                padding: theme.spacing[6],
+                borderColor: hasImages ? Colors.gold : Colors.border,
+                borderRadius: Radius.lg,
+                padding: Spacing.xl,
                 alignItems: "center",
-                backgroundColor: highlightColorBg,
+                backgroundColor: hasImages ? "rgba(191,146,69,0.08)" : Colors.card,
                 minHeight: 210,
-                justifyContent: 'center',
-                // 'transition' is not supported by React Native Style, so removed
+                justifyContent: "center",
             }}
             accessibilityRole="button"
             accessibilityLabel="Upload items"
             accessibilityHint="Tap to select images of your clothes"
         >
             <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-                <Ionicons
-                    name={images.length > 0 ? "shirt" : "shirt-outline"}
-                    size={52}
-                    color={highlightColor}
-                    style={{
-                        marginBottom: theme.spacing[2],
-                    }}
+                <AppIcon
+                    name={hasImages ? "shirt" : "shirt-outline"}
+                    size={48}
+                    color={hasImages ? Colors.gold : Colors.mid}
+                    style={{ marginBottom: Spacing.sm }}
                 />
             </Animated.View>
 
-            <Text style={{
-                ...theme.typography.h4,
-                color: highlightColor,
-            }}>
-                {images.length > 0 ? "Items are ready!" : "Add your first item"}
+            <Text style={{ ...styles.title, color: hasImages ? Colors.gold : Colors.text }}>
+                {hasImages ? "Items are ready" : "Add your first item"}
             </Text>
 
-            <Text
-                style={{
-                    ...theme.typography.body,
-                    textAlign: "center",
-                    color: theme.colors.neutral[500],
-                    marginTop: theme.spacing[2],
-                    marginBottom: theme.spacing[2],
-                }}
-            >
-                {images.length === 0
-                    ? "Tap to select or use the buttons below"
-                    : "You're ready to continue, or add more!"}
+            <Text style={styles.sub}>
+                {hasImages ? "You're ready to continue, or add more." : "Tap to select from your gallery, or use the buttons below."}
             </Text>
 
-            {images.length > 0 ? (
-                <View style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    // 'gap' is not supported in React Native Style, so handled by marginRight below
-                    marginTop: theme.spacing[3],
-                }}>
-                    {images.slice(0, 3).map((img, i) => (
+            {hasImages && (
+                <View style={{ flexDirection: "row", alignItems: "center", marginTop: Spacing.md, gap: 6 }}>
+                    {images.slice(0, 3).map((img) => (
                         <Image
                             key={img.id}
                             source={{ uri: img.uri }}
                             style={{
-                                width: 36,
-                                height: 36,
-                                borderRadius: theme.radius.md,
-                                marginRight: i < 2 && images.length > 1 ? theme.spacing[1] : 0,
+                                width: 38,
+                                height: 38,
+                                borderRadius: Radius.sm,
                                 borderWidth: 1,
-                                borderColor: theme.colors.neutral[200],
-                                backgroundColor: "#ccc"
+                                borderColor: Colors.border,
+                                backgroundColor: Colors.card2,
                             }}
+                            contentFit="cover"
                         />
                     ))}
-                    {images.length > 3 &&
-                        <Text style={{
-                            ...theme.typography.caption,
-                            marginLeft: theme.spacing[1]
-                        }}>
+                    {images.length > 3 && (
+                        <Text style={{ color: Colors.mid, fontSize: 11, marginLeft: 4 }}>
                             +{images.length - 3} more
                         </Text>
-                    }
+                    )}
                 </View>
-            ) : null}
-
-            <Text
-                style={{
-                    marginTop: theme.spacing[4],
-                    color: highlightColor,
-                    fontWeight: "600",
-                    ...theme.typography.bodyMedium,
-                }}
-            >
-                {images.length === 0
-                    ? "No images selected"
-                    : `${images.length} ${images.length === 1 ? "image" : "images"} selected`}
-            </Text>
+            )}
         </Pressable>
     );
 }
+
+const styles = {
+    title: {
+        fontSize: 16,
+        fontFamily: Typography.serif,
+        fontWeight: "600" as const,
+    },
+    sub: {
+        fontSize: 12,
+        textAlign: "center" as const,
+        color: Colors.mid,
+        marginTop: Spacing.sm,
+        maxWidth: 260,
+        lineHeight: 18,
+    },
+};

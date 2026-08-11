@@ -1,8 +1,9 @@
 import { SubscriptionPlan } from '@/hooks/useSubscription';
-import { useTheme } from '@/provider/ThemeProvider';
-import { Ionicons } from '@expo/vector-icons';
+import { Colors, Radius, Spacing, Typography } from '@/theme';
+import { AppIcon } from '@/components/ui/Icon';
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 interface PricingCardProps {
     plan: SubscriptionPlan;
@@ -11,36 +12,42 @@ interface PricingCardProps {
 }
 
 export const PricingCard: React.FC<PricingCardProps> = ({ plan, onSelect, loading }) => {
-    const theme = useTheme();
+    const isFree = plan.id === 'free';
+    const purchasable = !!plan.priceId;
 
     return (
-        <View style={[
-            styles.container,
-            {
-                backgroundColor: theme.colors.neutral[0],
-                borderColor: plan.isPopular ? theme.colors.brand.primary : theme.colors.neutral[200],
-                borderWidth: plan.isPopular ? 2 : 1,
-                borderRadius: theme.radius.lg || 20
-            }
-        ]}>
+        <View
+            style={[
+                styles.container,
+                {
+                    borderColor: plan.isPopular ? Colors.gold : Colors.border,
+                    borderWidth: plan.isPopular ? 1.5 : 1,
+                },
+            ]}
+        >
             {plan.isPopular && (
-                <View style={[styles.badge, { backgroundColor: theme.colors.brand.primary }]}>
+                <LinearGradient
+                    colors={[Colors.gold, Colors.goldL]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.badge}
+                >
                     <Text style={styles.badgeText}>MOST POPULAR</Text>
-                </View>
+                </LinearGradient>
             )}
 
-            <Text style={[theme.typography.h3, styles.title]}>{plan.name}</Text>
+            <Text style={styles.title}>{plan.name}</Text>
 
             <View style={styles.priceContainer}>
-                <Text style={[theme.typography.h1, { color: theme.colors.brand.primary }]}>{plan.price}</Text>
-                <Text style={[theme.typography.caption, styles.interval]}>/{plan.interval}</Text>
+                <Text style={styles.price}>{plan.price}</Text>
+                <Text style={styles.interval}>/{plan.interval}</Text>
             </View>
 
             <View style={styles.featureList}>
                 {plan.features.map((feature, index) => (
                     <View key={index} style={styles.featureItem}>
-                        <Ionicons name="checkmark-circle" size={20} color={theme.colors.brand.secondary} />
-                        <Text style={[theme.typography.body, styles.featureText]}>{feature}</Text>
+                        <AppIcon name="checkmark-circle" size={17} color={Colors.gold} />
+                        <Text style={styles.featureText}>{feature}</Text>
                     </View>
                 ))}
             </View>
@@ -48,14 +55,26 @@ export const PricingCard: React.FC<PricingCardProps> = ({ plan, onSelect, loadin
             <TouchableOpacity
                 style={[
                     styles.button,
-                    { backgroundColor: plan.isPopular ? theme.colors.brand.primary : theme.colors.neutral[900] }
+                    { backgroundColor: plan.isPopular ? Colors.gold : Colors.card2 },
+                    (!purchasable || loading) && { opacity: 0.55 },
                 ]}
-                onPress={() => onSelect(plan.id)}
-                disabled={loading}
+                onPress={() => purchasable && onSelect(plan.id)}
+                disabled={!purchasable || loading}
+                accessibilityRole="button"
+                accessibilityLabel={`Choose ${plan.name} plan`}
             >
-                <Text style={[theme.typography.button, styles.buttonText]}>
-                    {loading ? 'Processing...' : 'Choose Plan'}
-                </Text>
+                {loading ? (
+                    <ActivityIndicator color={plan.isPopular ? Colors.black : Colors.text} size="small" />
+                ) : (
+                    <Text
+                        style={[
+                            styles.buttonText,
+                            { color: plan.isPopular ? Colors.black : Colors.text },
+                        ]}
+                    >
+                        {isFree ? 'Current plan' : purchasable ? 'Choose Plan' : 'Coming soon'}
+                    </Text>
+                )}
             </TouchableOpacity>
         </View>
     );
@@ -63,58 +82,73 @@ export const PricingCard: React.FC<PricingCardProps> = ({ plan, onSelect, loadin
 
 const styles = StyleSheet.create({
     container: {
-        padding: 24,
-        marginBottom: 20,
+        padding: 22,
+        marginBottom: 16,
         width: '100%',
         position: 'relative',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 12,
-        elevation: 5,
+        backgroundColor: Colors.card,
+        borderRadius: Radius.lg,
+        marginTop: 8,
     },
     badge: {
         position: 'absolute',
-        top: -12,
+        top: -11,
         right: 20,
         paddingHorizontal: 12,
         paddingVertical: 4,
-        borderRadius: 12,
+        borderRadius: Radius.full,
     },
     badgeText: {
-        color: '#FFF',
-        fontSize: 10,
+        color: Colors.black,
+        fontSize: 9.5,
         fontWeight: '800',
+        letterSpacing: 0.8,
     },
     title: {
-        marginBottom: 8,
+        fontFamily: Typography.serif,
+        fontSize: 20,
+        fontWeight: '600',
+        color: Colors.text,
+        marginBottom: 6,
     },
     priceContainer: {
         flexDirection: 'row',
         alignItems: 'baseline',
-        marginBottom: 24,
+        marginBottom: Spacing.md,
+    },
+    price: {
+        fontFamily: Typography.serif,
+        fontSize: 34,
+        fontWeight: '700',
+        color: Colors.gold,
     },
     interval: {
         marginLeft: 4,
+        color: Colors.mid,
+        fontSize: 13,
     },
     featureList: {
-        marginBottom: 24,
+        marginBottom: Spacing.md,
+        gap: 10,
     },
     featureItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 12,
+        gap: 10,
     },
     featureText: {
-        marginLeft: 10,
-        fontSize: 14,
+        color: Colors.mid,
+        fontSize: 13.5,
+        flex: 1,
     },
     button: {
-        paddingVertical: 14,
-        borderRadius: 12,
+        height: 48,
+        borderRadius: Radius.md,
         alignItems: 'center',
+        justifyContent: 'center',
     },
     buttonText: {
         fontWeight: '700',
+        fontSize: 14,
     },
 });

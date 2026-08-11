@@ -1,7 +1,8 @@
-import { useTheme } from "@/provider/ThemeProvider";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import React from "react";
+import { Colors, Radius, Spacing } from "@/theme";
 
 type ButtonProps = {
     title?: string;
@@ -13,6 +14,7 @@ type ButtonProps = {
     variant?: "primary" | "secondary";
 };
 
+/** Legacy brand button (title/children API) — dark-gold themed. */
 export function PrimaryButton({
     title,
     children,
@@ -22,61 +24,73 @@ export function PrimaryButton({
     icon,
     variant = "primary",
 }: ButtonProps) {
-    const theme = useTheme();
-
     const isSecondary = variant === "secondary";
-
-    const backgroundColor = disabled
-        ? theme.colors.neutral[300]
-        : isSecondary
-            ? "#fff"
-            : theme.colors.brand.primary;
-    const textColor = isSecondary
-        ? theme.colors.brand.primary
-        : "#fff";
-    const borderColor = isSecondary
-        ? theme.colors.brand.primary
-        : "transparent";
-    const borderWidth = isSecondary ? 2 : 0;
 
     return (
         <Pressable
-            onPress={onPress}
-            disabled={disabled || loading}
-            style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor,
-                paddingVertical: theme.spacing[3],
-                borderRadius: theme.radius.md,
-                borderColor,
-                borderWidth,
-                opacity: disabled ? 0.6 : 1,
+            onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                onPress?.();
             }}
+            disabled={disabled || loading}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+                styles.base,
+                isSecondary ? styles.secondary : styles.primary,
+                (disabled || loading) && { opacity: 0.55 },
+                pressed && { opacity: 0.85 },
+            ]}
         >
             {loading ? (
-                <ActivityIndicator color={textColor} style={{ marginRight: icon || children || title ? theme.spacing[2] : 0 }} />
-            ) : icon ? (
-                <Ionicons
-                    name={icon}
-                    size={20}
-                    color={textColor}
-                    style={{
-                        marginRight: (title || children) ? theme.spacing[2] : 0,
-                    }}
-                />
-            ) : null}
-            {title && !loading && (
-                <Text style={[theme.typography.button, { color: textColor }]}>
-                    {title}
-                </Text>
-            )}
-            {children && !loading && (
-                <Text style={[theme.typography.button, { color: textColor }]}>
-                    {children}
-                </Text>
+                <ActivityIndicator color={isSecondary ? Colors.gold : Colors.black} />
+            ) : (
+                <>
+                    {icon && (
+                        <Ionicons
+                            name={icon}
+                            size={18}
+                            color={isSecondary ? Colors.gold : Colors.black}
+                            style={{ marginRight: title || children ? Spacing.sm : 0 }}
+                        />
+                    )}
+                    {!!title && <Text style={[styles.label, isSecondary && styles.labelSecondary]}>{title}</Text>}
+                    {!!children && (
+                        <Text style={[styles.label, isSecondary && styles.labelSecondary]}>{children}</Text>
+                    )}
+                </>
             )}
         </Pressable>
     );
 }
+
+const styles = StyleSheet.create({
+    base: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        paddingVertical: 14,
+        paddingHorizontal: Spacing.lg,
+        borderRadius: Radius.md,
+    },
+    primary: {
+        backgroundColor: Colors.gold,
+        shadowColor: Colors.gold,
+        shadowOpacity: 0.35,
+        shadowRadius: 14,
+        shadowOffset: { width: 0, height: 5 },
+        elevation: 6,
+    },
+    secondary: {
+        backgroundColor: "transparent",
+        borderColor: Colors.gold,
+        borderWidth: 1.5,
+    },
+    label: {
+        color: Colors.black,
+        fontWeight: "700",
+        fontSize: 15,
+    },
+    labelSecondary: {
+        color: Colors.gold,
+    },
+});

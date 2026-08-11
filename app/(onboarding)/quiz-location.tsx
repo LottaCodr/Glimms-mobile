@@ -1,14 +1,46 @@
 import React, { useState } from 'react'
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, TextInput } from 'react-native'
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, TextInput, ActivityIndicator } from 'react-native'
 import { useRouter } from 'expo-router'
+import * as Location from 'expo-location'
 import { Colors, Radius, Spacing, Typography } from '@/theme'
 import { BackButton, GoldButton, ProgressDots } from '@/components/buttons'
+import { useOnboardingStore } from '@/store/onboarding.store'
+import { AppIcon } from '@/components/ui/Icon'
 
 const CITIES = ['Lagos, Nigeria','London, UK','New York, USA','Dubai, UAE','Nairobi, Kenya','Toronto, Canada']
 
 export default function QuizLocationScreen() {
   const router = useRouter()
-  const [city, setCity] = useState('')
+  const city = useOnboardingStore((s) => s.answers.city ?? '')
+  const setCity = useOnboardingStore((s) => s.setCity)
+  const setLocation = useOnboardingStore((s) => s.setLocation)
+  const [resolving, setResolving] = useState(false)
+
+  // Best-effort resolve: typed city → coordinates for climate-aware styling.
+  // If geocoding fails we simply omit `location` (backend falls back to a default climate).
+  const resolveAndContinue = async () => {
+    if (resolving) return
+    setResolving(true)
+    try {
+      const trimmed = city.trim()
+      if (trimmed) {
+        const matches = await Location.geocodeAsync(trimmed).catch(() => [])
+        const hit = matches?.[0]
+        if (hit) {
+          const parts = trimmed.split(',')
+          setLocation({
+            lat: hit.latitude,
+            lon: hit.longitude,
+            city: parts[0]?.trim() || undefined,
+            country: parts[1]?.trim() || undefined,
+          })
+        }
+      }
+    } finally {
+      setResolving(false)
+    }
+    router.push('/(onboarding)/sign-up')
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -24,7 +56,7 @@ export default function QuizLocationScreen() {
         <Text style={styles.sub}>For climate-aware styling recommendations</Text>
 
         <View style={styles.inputRow}>
-          <Text style={{ fontSize: 16, color: Colors.mid }}>📍</Text>
+          <AppIcon name="location-outline" size={18} color={Colors.mid} />
           <TextInput
             value={city}
             onChangeText={setCity}
@@ -49,7 +81,8 @@ export default function QuizLocationScreen() {
       </ScrollView>
 
       <View style={styles.footer}>
-        <GoldButton label="Create My Style Profile ✦" onPress={() => router.push('/(onboarding)/sign-up')} />
+        <GoldButton label="Create My Style Profile" onPress={resolveAndContinue} />
+        {resolving && <ActivityIndicator color={Colors.gold} style={{ marginTop: 10 }} />}
       </View>
     </SafeAreaView>
   )

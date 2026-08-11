@@ -1,25 +1,27 @@
-import { useTheme } from "@/provider/ThemeProvider";
+import React from "react";
 import { View } from "react-native";
+import { Colors, Radius } from "@/theme";
+
+const STEPS = 5;
 
 export function StepIndicator({ step }: { step: number }) {
-    const theme = useTheme();
-
     return (
-        <View style={{ flexDirection: "row", gap: theme.spacing[2] }}>
-            {[1, 2, 3, 4, 5].map((i) => (
-                <View
-                    key={i}
-                    style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: 999,
-                        backgroundColor:
-                            i === step
-                                ? theme.colors.brand.primary
-                                : theme.colors.neutral[300],
-                    }}
-                />
-            ))}
+        <View style={{ flexDirection: "row", gap: 6, marginBottom: 16 }}>
+            {Array.from({ length: STEPS }).map((_, i) => {
+                const active = i + 1 === step;
+                const done = i + 1 < step;
+                return (
+                    <View
+                        key={i}
+                        style={{
+                            height: 6,
+                            borderRadius: Radius.full,
+                            flexGrow: active ? 2 : 1,
+                            backgroundColor: active ? Colors.gold : done ? Colors.goldL : Colors.card2,
+                        }}
+                    />
+                );
+            })}
         </View>
     );
 }

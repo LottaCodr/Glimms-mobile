@@ -1,8 +1,10 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView } from 'react-native'
 import { useRouter } from 'expo-router'
 import { Colors, Radius, Spacing, Typography } from '@/theme'
 import { BackButton, GoldButton, ProgressDots } from '@/components/buttons'
+import { useOnboardingStore } from '@/store/onboarding.store'
+import { AppIcon } from '@/components/ui/Icon'
 
 const STYLES = [
   { id: 'minimal',  label: 'Minimal',    desc: 'Clean, quiet, intentional',   colors: ['#E8E4DC','#C8C4BC','#A8A4A0'] },
@@ -13,7 +15,8 @@ const STYLES = [
 
 export default function QuizStyleScreen() {
   const router = useRouter()
-  const [selected, setSelected] = useState<string | null>(null)
+  const selected = useOnboardingStore((s) => s.answers.styleGoal)
+  const setSelected = useOnboardingStore((s) => s.setStyleGoal)
 
   return (
     <SafeAreaView style={styles.container}>
@@ -25,7 +28,7 @@ export default function QuizStyleScreen() {
         </View>
 
         <Text style={styles.label}>1 OF 3</Text>
-        <Text style={styles.title}>What's your{'\n'}<Text style={styles.accent}>personal vibe?</Text></Text>
+        <Text style={styles.title}>What’s your{'\n'}<Text style={styles.accent}>personal vibe?</Text></Text>
 
         <View style={styles.grid}>
           {STYLES.map((opt) => {
@@ -46,7 +49,7 @@ export default function QuizStyleScreen() {
                 <Text style={styles.optDesc}>{opt.desc}</Text>
                 {active && (
                   <View style={styles.checkCircle}>
-                    <Text style={{ color: Colors.black, fontSize: 10 }}>✓</Text>
+                    <AppIcon name="checkmark" size={11} color={Colors.black} />
                   </View>
                 )}
               </TouchableOpacity>

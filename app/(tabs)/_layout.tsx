@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback } from 'react'
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native'
+import { View, TouchableOpacity, StyleSheet, Platform } from 'react-native'
 import { Tabs } from 'expo-router'
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs'
 import Animated, {
@@ -56,7 +56,7 @@ function TabIcon({ tab, focused }: TabIconProps) {
     scale.value = withSpring(focused ? 1.12 : 1, { damping: 12, stiffness: 260, mass: 0.8 })
     labelOpacity.value = withTiming(focused ? 1 : 0.45, { duration: 180, easing: Easing.out(Easing.quad) })
     iconColor.value = withTiming(focused ? 1 : 0, { duration: 180 })
-  }, [focused])
+  }, [focused, scale, labelOpacity, iconColor])
 
   const iconWrapStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -109,7 +109,7 @@ function ScanFab({ onPress }: ScanFabProps) {
     setTimeout(() => { pressed.value = 0 }, 120)
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
     onPress()
-  }, [onPress])
+  }, [onPress, pressed])
 
   return (
     <View style={tabStyles.fabContainer}>

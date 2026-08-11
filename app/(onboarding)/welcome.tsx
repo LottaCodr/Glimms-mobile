@@ -33,7 +33,7 @@ export default function WelcomeScreen() {
 
         {/* Actions */}
         <View style={styles.actions}>
-          <GoldButton label="Get Started →" onPress={() => router.push('/(onboarding)/how-it-works' as any)} />
+          <GoldButton label="Get Started" onPress={() => router.push('/(onboarding)/how-it-works' as any)} />
           <TouchableOpacity
             onPress={() => router.push('/(auth)/login' as any)}
             style={styles.signInBtn}

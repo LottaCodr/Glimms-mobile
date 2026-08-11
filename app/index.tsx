@@ -1,6 +1,7 @@
 import { useTheme } from "@/provider/ThemeProvider";
 import { useAuthStore } from "@/store/auth.store";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fetchHealth } from "@/services/api.client";
+import { toast } from "@/store/toast.store";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef } from "react";
 import {
@@ -11,20 +12,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 3,
-      staleTime: 5 * 60 * 1000,
-      refetchOnWindowFocus: false,
-      refetchOnMount: true,
-    },
-    mutations: {
-      retry: 1,
-    },
-  },
-});
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -41,14 +28,27 @@ function SplashScreen() {
 
   useEffect(() => {
     const bootstrap = async () => {
-      // Only call if hydrateAuth is a function
+      // Restore the session from SecureStore (with refresh fallback — guide §16.1)
+      // Readiness poll (guide §6): non-blocking — degraded still serves reads.
+      fetchHealth()
+        .then((h) => {
+          if (h?.status === "degraded") {
+            toast.warning("Some services are degraded — designs may be slower than usual.");
+          }
+        })
+        .catch(() => {
+          // Offline or API down; screens render their own error/empty states.
+        });
+
       if (typeof hydrateAuth === "function") {
         await hydrateAuth();
       }
 
       await new Promise((res) => setTimeout(res, 1400));
 
-      router.replace("/(onboarding)/welcome");
+      // Route on the freshly resolved auth state, not a stale render value.
+      const { isAuthenticated } = useAuthStore.getState();
+      router.replace(isAuthenticated ? "/(tabs)/home" : "/(onboarding)/welcome");
     };
 
     bootstrap();
@@ -73,7 +73,7 @@ function SplashScreen() {
         useNativeDriver: false,
       }),
     ]).start();
-  }, []);
+  }, [scale, opacity, progress]);
 
   const styles = createStyles(theme, SCREEN_WIDTH);
 
@@ -194,9 +194,5 @@ function createStyles(theme: any, SCREEN_WIDTH: number) {
 }
 
 export default function App() {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <SplashScreen />
-    </QueryClientProvider>
-  );
+  return <SplashScreen />;
 }

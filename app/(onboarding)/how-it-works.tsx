@@ -3,11 +3,12 @@ import { View, Text, StyleSheet, ScrollView, SafeAreaView } from 'react-native'
 import { useRouter } from 'expo-router'
 import { Colors, Radius, Spacing, Typography } from '@/theme'
 import { GoldButton, BackButton } from '@/components/buttons'
+import { AppIcon, IoniconName } from '@/components/ui/Icon'
 
-const STEPS = [
-  { step: '01', title: 'Scan your clothes',  desc: 'Photograph any item. AI identifies colour, category and style instantly.', emoji: '📸' },
-  { step: '02', title: 'Set your context',   desc: 'Choose the occasion, your location and the vibe you\'re going for.', emoji: '⚡' },
-  { step: '03', title: 'Get styled',         desc: 'Receive 5+ personalised outfit combinations built around you.', emoji: '✨' },
+const STEPS: { step: string; title: string; icon: IoniconName; desc: string }[] = [
+  { step: '01', title: 'Scan your clothes',  icon: 'camera-outline',   desc: 'Photograph any item. AI identifies colour, category and style instantly.' },
+  { step: '02', title: 'Set your context',   icon: 'options-outline',  desc: 'Choose the occasion, your location and the vibe you\'re going for.' },
+  { step: '03', title: 'Get styled',         icon: 'sparkles-outline', desc: 'Receive personalised outfit combinations built around you.' },
 ]
 
 export default function HowItWorksScreen() {
@@ -29,7 +30,7 @@ export default function HowItWorksScreen() {
         {STEPS.map((s) => (
           <View key={s.step} style={styles.stepCard}>
             <View style={styles.stepIcon}>
-              <Text style={{ fontSize: 22 }}>{s.emoji}</Text>
+              <AppIcon name={s.icon} size={22} color={Colors.gold} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.stepNum}>{s.step}</Text>
@@ -51,7 +52,8 @@ export default function HowItWorksScreen() {
             <Text style={styles.previewMeta}>Work · 94% match</Text>
           </View>
           <View style={styles.aiBadge}>
-            <Text style={styles.aiBadgeText}>AI ✦</Text>
+            <AppIcon name="sparkles-outline" size={11} color={Colors.gold} />
+            <Text style={[styles.aiBadgeText, { marginLeft: 4 }]}>AI</Text>
           </View>
         </View>
       </ScrollView>
@@ -94,6 +96,7 @@ const styles = StyleSheet.create({
   previewName: { fontSize: 13, fontFamily: Typography.serif, fontWeight: '600', color: Colors.text },
   previewMeta: { fontSize: 10, color: Colors.mid },
   aiBadge: {
+    flexDirection: 'row', alignItems: 'center',
     backgroundColor: 'rgba(191,146,69,0.12)',
     borderWidth: 1, borderColor: Colors.gold,
     borderRadius: Radius.xs, paddingHorizontal: 8, paddingVertical: 2,

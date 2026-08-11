@@ -1,25 +1,33 @@
-// app/(closet)/upload/index.tsx
-
+// Legacy gallery-first upload entry (still reachable via deep link).
+// The tab "Scan" flow (app/screens/scan.tsx) is the primary path.
 import { PrimaryButton } from "@/components/buttons/PrimaryButton";
 import { UploadDropzone } from "@/components/closet/upload/UploadDropZone";
+import { IconButton } from "@/components/ui/IconButton";
 import { Screen } from "@/components/layout/Screen";
-import { useTheme } from "@/provider/ThemeProvider";
+import { Colors, Spacing, Typography } from "@/theme";
 import { useUploadStore } from "@/store/upload.store";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
-import { Text, View } from "react-native";
-import type { FlexAlignType } from "react-native"; // for type check of alignItems
+import React from "react";
+import { Alert, Text, View } from "react-native";
 
 function simpleUid() {
     return (
         Date.now().toString(36) +
-        Math.random().toString(36).substr(2, 9)
+        Math.random().toString(36).slice(2, 11)
     );
 }
 
-export default function UploadScreen() {
-    const theme = useTheme();
+function assetsToUploads(assets: ImagePicker.ImagePickerAsset[]) {
+    return assets.map((a) => ({
+        id: simpleUid(),
+        uri: a.uri,
+        localPath: a.uri,
+        status: "pending" as const,
+    }));
+}
 
+export default function UploadScreen() {
     const addImages = useUploadStore((s) => s.addImages);
     const nextStep = useUploadStore((n) => n.nextStep);
     const clearImages = useUploadStore((s) => s.clearImages);
@@ -28,78 +36,58 @@ export default function UploadScreen() {
     const pickFromGallery = async () => {
         const res = await ImagePicker.launchImageLibraryAsync({
             allowsMultipleSelection: true,
-            quality: 0.8,
+            selectionLimit: 5,
+            quality: 0.85,
         });
-
         if (!res.canceled && res.assets?.length) {
-            addImages(
-                res.assets.map((a) => ({
-                    id: simpleUid(),
-                    uri: a.uri,
-                    localPath: a.uri,
-                    status: "pending",
-                }))
-            );
-
+            addImages(assetsToUploads(res.assets));
             nextStep();
-            router.push("/screens/upload/review");
+            router.push("/screens/upload/review" as any);
         }
     };
 
     const takePhoto = async () => {
         const permission = await ImagePicker.requestCameraPermissionsAsync();
-        if (!permission.granted) return;
-
-        const res = await ImagePicker.launchCameraAsync({
-            quality: 0.8,
-        });
-
+        if (!permission.granted) {
+            Alert.alert("Camera access needed", "Allow camera access to photograph your items.");
+            return;
+        }
+        const res = await ImagePicker.launchCameraAsync({ quality: 0.85 });
         if (!res.canceled && res.assets?.length) {
-            addImages(
-                res.assets.map((a) => ({
-                    id: simpleUid(),
-                    uri: a.uri,
-                    localPath: a.uri,
-                    status: "pending",
-                }))
-            );
-
+            addImages(assetsToUploads(res.assets));
             nextStep();
-            router.push("/screens/upload/review");
+            router.push("/screens/upload/review" as any);
         }
     };
 
     return (
         <Screen padded={false}>
-            <View style={styles.container(theme)}>
-
-                {/* HEADER */}
-                <View style={styles.header(theme)}>
-                    <Text style={styles.title(theme)}>Upload Clothes</Text>
-
-                    <Text style={styles.subtitle(theme)}>
-                        Add photos of your clothing and start building your smart closet.
-                    </Text>
+            <View style={{ flex: 1, paddingHorizontal: Spacing.lg, paddingTop: Spacing.md }}>
+                {/* Header */}
+                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: Spacing.md }}>
+                    <IconButton icon="chevron-back" accessibilityLabel="Back" onPress={() => router.back()} />
+                    <Text style={styles.title}>Upload Clothes</Text>
+                    <View style={{ width: 38 }} />
                 </View>
+                <Text style={styles.subtitle}>
+                    Add photos of your clothing and start building your smart closet.
+                </Text>
 
-                {/* DROPZONE CARD */}
-                <View style={styles.card(theme)}>
+                {/* Dropzone */}
+                <View style={{ marginTop: Spacing.md }}>
                     <UploadDropzone onPick={pickFromGallery} />
                 </View>
 
-                {/* ACTIONS */}
-                <View style={styles.actions(theme)}>
-
-                    <PrimaryButton icon="camera" onPress={takePhoto}>
+                {/* Actions */}
+                <View style={{ marginTop: Spacing.xl, gap: 10 }}>
+                    <PrimaryButton icon="camera-outline" onPress={takePhoto}>
                         Take Photo
                     </PrimaryButton>
-
-                    <PrimaryButton variant="secondary" onPress={pickFromGallery}>
+                    <PrimaryButton variant="secondary" icon="images-outline" onPress={pickFromGallery}>
                         Upload from Gallery
                     </PrimaryButton>
-
-                    {images?.length > 0 && (
-                        <PrimaryButton variant="secondary" onPress={clearImages}>
+                    {images.length > 0 && (
+                        <PrimaryButton variant="secondary" icon="trash-outline" onPress={clearImages}>
                             Clear Selected Images
                         </PrimaryButton>
                     )}
@@ -110,45 +98,20 @@ export default function UploadScreen() {
 }
 
 const styles = {
-    container: (theme: any) => ({
+    title: {
         flex: 1,
-        paddingHorizontal: theme.spacing[5],
-        paddingTop: theme.spacing[6],
-        backgroundColor: theme.colors.neutral[50],
-    }),
-
-    header: (theme: any) => ({
-        marginBottom: theme.spacing[6],
-        alignItems: "center" as FlexAlignType,
-    }),
-
-    title: (theme: any) => ({
-        ...theme.typography.h2,
-        color: theme.colors.neutral[900],
-        marginBottom: theme.spacing[2],
+        fontSize: 20,
+        fontFamily: Typography.serif,
+        fontWeight: "600" as const,
+        color: Colors.text,
         textAlign: "center" as const,
-    }),
-
-    subtitle: (theme: any) => ({
-        ...theme.typography.body,
-        color: theme.colors.neutral[500],
+    },
+    subtitle: {
+        fontSize: 13,
+        color: Colors.mid,
         textAlign: "center" as const,
-        maxWidth: 320,
-    }),
-
-    card: (theme: any) => ({
-        backgroundColor: "#fff",
-        borderRadius: theme.radius.lg,
-        padding: theme.spacing[4],
-        shadowColor: "#000",
-        shadowOpacity: 0.06,
-        shadowRadius: 16,
-        shadowOffset: { width: 0, height: 6 },
-        elevation: 3,
-    }),
-
-    actions: (theme: any) => ({
-        marginTop: theme.spacing[8],
-        gap: theme.spacing[3],
-    }),
+        maxWidth: 300,
+        alignSelf: "center" as const,
+        lineHeight: 19,
+    },
 };
