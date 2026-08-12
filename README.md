@@ -52,16 +52,19 @@ For some additional implementation notes, see `PROJECT.md`.
 1. **Install dependencies**
 
    ```bash
-   npm install
+   npm ci
    ```
 
-2. **Run the app**
+2. **Run the app with the project-local Expo CLI**
 
    ```bash
    npm run start
-   # or
-   npx expo start
+   # or, to discard the Metro cache
+   npm run start -- --clear
    ```
+
+   Avoid the legacy global `expo start` command. Using the local CLI keeps Expo,
+   Metro, and Expo Router on the versions recorded in `package-lock.json`.
 
 3. **Open on a device / emulator**
 
@@ -90,6 +93,46 @@ For some additional implementation notes, see `PROJECT.md`.
 - Environment / API config: `config/env.ts` (add your keys and base URLs here as needed)
 
 If you introduce new environment values, prefer reading them from `env.ts` so configuration stays in one place.
+
+---
+
+### Windows / Android troubleshooting
+
+If Metro reports an invalid `require.context` call, first make sure the local CLI
+and locked dependencies are being used:
+
+```powershell
+# Stop any Expo/Metro terminal first, then run from the project directory.
+Remove-Item -Recurse -Force node_modules, .expo -ErrorAction SilentlyContinue
+npm ci
+npm run start -- --clear
+```
+
+If port 8081 remains occupied, find and stop only the process using it:
+
+```powershell
+Get-NetTCPConnection -LocalPort 8081 -ErrorAction SilentlyContinue |
+  Select-Object -ExpandProperty OwningProcess -Unique |
+  ForEach-Object { Stop-Process -Id $_ -Force }
+```
+
+For a physical phone, keep the computer and phone on the same network and use
+LAN mode. If LAN discovery is blocked, use `npm run start -- --tunnel`. A QR code
+containing `127.0.0.1` is only reachable from the computer itself.
+
+`cmd: Can't find service: package` is an Android emulator/ADB failure, not a
+Metro bundle error. Wait until Android has fully booted, then cold-boot the
+emulator and restart ADB:
+
+```powershell
+adb kill-server
+adb start-server
+adb devices
+```
+
+If `adb shell cmd package list packages` still says that the `package` service
+is missing, wipe/recreate that Android Virtual Device with a current Google APIs
+system image.
 
 ---
 
