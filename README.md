@@ -63,6 +63,11 @@ For some additional implementation notes, see `PROJECT.md`.
    npm run start -- --clear
    ```
 
+   `npm start` runs `scripts/start.js`, which launches the **project-local**
+   Expo CLI and skips Expo's remote dependency check. That check (`GET
+   https://api.expo.dev/v2/sdks/<sdk>/native-modules`) is what throws
+   `TypeError: fetch failed` on many Windows networks and kills Metro.
+
    Avoid the legacy global `expo start` command. Using the local CLI keeps Expo,
    Metro, and Expo Router on the versions recorded in `package-lock.json`.
 
@@ -78,7 +83,9 @@ For some additional implementation notes, see `PROJECT.md`.
 
 ### Available Scripts
 
-- `npm run start` – start the Expo dev server
+- `npm run start` – start the Expo dev server (IPv4-first, no remote version fetch)
+- `npm run start:offline` – same, but skip every Expo network call (`expo start --offline`)
+- `npm run start -- --validate-deps` – re-enable Expo's remote package version check
 - `npm run android` – run the app on Android
 - `npm run ios` – run the app on iOS
 - `npm run web` – run the app in a web browser
@@ -97,6 +104,34 @@ If you introduce new environment values, prefer reading them from `env.ts` so co
 ---
 
 ### Windows / Android troubleshooting
+
+#### `TypeError: fetch failed` right after "Starting Metro Bundler"
+
+That stack (`getNativeModuleVersionsAsync` → `validateDependenciesVersionsAsync`)
+is Expo CLI failing to reach `https://api.expo.dev`, **not** a bug in Glimms.
+Node's undici `fetch` on Windows often fails with IPv6 (`ENETUNREACH`), a
+corporate proxy, TLS inspection, or antivirus. Expo only treats a few of those
+codes as "offline", so the `TypeError` is rethrown and Metro dies.
+
+`npm start` already avoids that path. If you invoked Expo some other way:
+
+```powershell
+# From the project directory — uses the wrapper
+npm start -- --clear
+
+# Or skip every Expo API call
+npm run start:offline
+
+# Diagnose the network (should return JSON, not hang / TLS error)
+curl.exe -I https://api.expo.dev/v2/versions/latest
+```
+
+Also check:
+
+- Empty `HTTP_PROXY` / `HTTPS_PROXY` in the shell or `.env` (delete them).
+- VPN, corporate SSL inspection, or antivirus HTTPS scanning.
+- `.env` uses `EXPO_PUBLIC_API_URL` / `EXPO_PUBLIC_WS_URL`. Bare `API_URL`
+  is exported by the CLI but never reaches the app bundle.
 
 If Metro reports an invalid `require.context` call, first make sure the local CLI
 and locked dependencies are being used:
