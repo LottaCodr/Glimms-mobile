@@ -63,13 +63,15 @@ export default function PreferencesScreen() {
     useEffect(() => {
         const d = prefsQuery.data;
         if (d && "id" in d && !hydrated) {
-            setOccupation(d.occupation);
-            setStyleGoals(d.styleGoals ?? []);
-            setOccasions(d.occasions ?? []);
-            setCulture(d.culturalCtx);
-            setLocation(d.location ?? null);
-            setCityDraft(d.location?.city ?? "");
-            setHydrated(true);
+            queueMicrotask(() => {
+                setOccupation(d.occupation);
+                setStyleGoals(d.styleGoals ?? []);
+                setOccasions(d.occasions ?? []);
+                setCulture(d.culturalCtx);
+                setLocation(d.location ?? null);
+                setCityDraft(d.location?.city ?? "");
+                setHydrated(true);
+            });
         }
     }, [prefsQuery.data, hydrated]);
 

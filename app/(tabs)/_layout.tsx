@@ -1,7 +1,7 @@
 import React, { useEffect, useCallback } from 'react'
 import { View, TouchableOpacity, StyleSheet, Platform } from 'react-native'
 import { Tabs } from 'expo-router'
-import type { BottomTabBarProps } from '@react-navigation/bottom-tabs'
+import type { BottomTabBarProps } from 'expo-router/build/react-navigation/bottom-tabs'
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -109,7 +109,8 @@ function ScanFab({ onPress }: ScanFabProps) {
     setTimeout(() => { pressed.value = 0 }, 120)
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
     onPress()
-  }, [onPress, pressed])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onPress])
 
   return (
     <View style={tabStyles.fabContainer}>

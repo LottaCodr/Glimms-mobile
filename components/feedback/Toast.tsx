@@ -2,7 +2,7 @@
  * Top-of-screen toast stack — mount once in the root layout.
  * Drive it via `toast.success/error/info/warning` from `@/store/toast.store`.
  */
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Colors, Radius, Spacing } from "@/theme";
@@ -18,8 +18,8 @@ const TYPE_CONFIG: Record<ToastItem["type"], { icon: string; color: string }> = 
 
 function ToastRow({ item }: { item: ToastItem }) {
     const dismiss = useToastStore((s) => s.dismiss);
-    const translateY = useRef(new Animated.Value(-80)).current;
-    const opacity = useRef(new Animated.Value(0)).current;
+    const [translateY] = useState(() => new Animated.Value(-80));
+    const [opacity] = useState(() => new Animated.Value(0));
     const cfg = TYPE_CONFIG[item.type];
 
     useEffect(() => {
