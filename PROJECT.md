@@ -40,9 +40,13 @@ Config: `config/env.ts` reads `EXPO_PUBLIC_API_URL` / `EXPO_PUBLIC_WS_URL` / `EX
 
 ```bash
 npm install
-cp .env.example .env   # set EXPO_PUBLIC_API_URL
-npm run start
+cp .env.example .env   # set EXPO_PUBLIC_API_URL (not API_URL)
+npm run start          # wrapper: IPv4-first, skips Expo's remote version fetch
 ```
+
+If `expo start` itself prints `TypeError: fetch failed` under
+`getNativeModuleVersionsAsync`, use `npm start` or `npm run start:offline`.
+That error is Expo CLI failing to reach `api.expo.dev`, not an app bug.
 
 Other scripts:
 
