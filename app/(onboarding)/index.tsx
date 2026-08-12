@@ -392,14 +392,14 @@ const styles = StyleSheet.create({
         borderRadius: 24,
     },
     heroLoadingOverlay: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         justifyContent: "center",
         alignItems: "center",
         zIndex: 2,
         backgroundColor: "#f6f7fa",
     },
     heroErrorOverlay: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         zIndex: 3,
         alignItems: "center",
         justifyContent: "center",

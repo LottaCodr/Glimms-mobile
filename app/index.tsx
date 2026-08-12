@@ -3,7 +3,7 @@ import { useAuthStore } from "@/store/auth.store";
 import { fetchHealth } from "@/services/api.client";
 import { toast } from "@/store/toast.store";
 import { useRouter } from "expo-router";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Animated,
   Dimensions,
@@ -22,9 +22,9 @@ function SplashScreen() {
   // Fix: Initialize hydrateAuth safely, handling possible undefined
   const hydrateAuth = useAuthStore((s) => s.hydrateAuth);
 
-  const scale = useRef(new Animated.Value(0.92)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
-  const progress = useRef(new Animated.Value(0)).current;
+  const [scale] = useState(() => new Animated.Value(0.92));
+  const [opacity] = useState(() => new Animated.Value(0));
+  const [progress] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     const bootstrap = async () => {

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { Animated, StyleSheet, View, ViewStyle } from "react-native";
 import { Colors, Radius } from "@/theme";
 
@@ -11,7 +11,7 @@ type Props = {
 
 /** Pulsing placeholder used while queries load (guide §17 caching UX). */
 export function Skeleton({ width = "100%", height = 16, borderRadius = Radius.sm, style }: Props) {
-    const opacity = useRef(new Animated.Value(0.35)).current;
+    const [opacity] = useState(() => new Animated.Value(0.35));
 
     useEffect(() => {
         const loop = Animated.loop(

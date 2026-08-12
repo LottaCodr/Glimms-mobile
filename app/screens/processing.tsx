@@ -8,13 +8,13 @@ import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { Colors, Radius, Spacing, Typography } from "@/theme";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { Animated, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function ProcessingScreen() {
     const router = useRouter();
-    const pulse = useRef(new Animated.Value(1)).current;
+    const [pulse] = useState(() => new Animated.Value(1));
 
     useEffect(() => {
         const loop = Animated.loop(

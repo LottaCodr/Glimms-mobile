@@ -30,9 +30,9 @@ export default function PaywallScreen() {
     useEffect(() => {
         if (user && user.tier !== "free") {
             const t = setTimeout(() => {
+                setNotice(`Welcome to ${user.tier.toUpperCase()} — enjoy your expanded limits.`);
                 if (router.canGoBack()) router.back();
             }, 1200);
-            setNotice(`Welcome to ${user.tier.toUpperCase()} — enjoy your expanded limits.`);
             return () => clearTimeout(t);
         }
     }, [user, router]);

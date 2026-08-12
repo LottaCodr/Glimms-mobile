@@ -2,7 +2,7 @@
  * Slim offline indicator — listens to NetInfo and shows a banner while
  * disconnected. Scans taken offline auto-queue (store/offlineQueue.store.ts).
  */
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { Animated, StyleSheet, Text } from "react-native";
 import NetInfo from "@react-native-community/netinfo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,7 +14,7 @@ export function OfflineBanner() {
     const insets = useSafeAreaInsets();
     const queuedCount = useOfflineQueueStore((s) => s.items.length);
     const [offline, setOffline] = React.useState(false);
-    const translate = useRef(new Animated.Value(-60)).current;
+    const [translate] = useState(() => new Animated.Value(-60));
 
     useEffect(() => {
         const sub = NetInfo.addEventListener((state) => {

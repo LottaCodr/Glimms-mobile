@@ -325,7 +325,7 @@ const styles = StyleSheet.create({
   },
   heroImg: { width: '100%', aspectRatio: 4 / 3, backgroundColor: Colors.card2 },
   heroFallback: { alignItems: 'center', justifyContent: 'center' },
-  heroGradient: { ...StyleSheet.absoluteFillObject, top: '35%' },
+  heroGradient: { ...StyleSheet.absoluteFill, top: '35%' },
   heroContent: {
     position: 'absolute', left: 14, right: 14, bottom: 12,
     flexDirection: 'row', alignItems: 'flex-end', gap: 10,

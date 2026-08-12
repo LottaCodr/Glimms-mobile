@@ -20,8 +20,10 @@ export const PremiumModal: React.FC<PremiumModalProps> = ({ visible, onClose }) 
 
     useEffect(() => {
         if (user && user.tier !== 'free' && visible) {
-            setNotice(`Welcome to ${String(user.tier).toUpperCase()} — enjoy your expanded limits.`);
-            const t = setTimeout(onClose, 1400);
+            const t = setTimeout(() => {
+                setNotice(`Welcome to ${String(user.tier).toUpperCase()} — enjoy your expanded limits.`);
+                onClose();
+            }, 1400);
             return () => clearTimeout(t);
         }
     }, [user, visible, onClose]);

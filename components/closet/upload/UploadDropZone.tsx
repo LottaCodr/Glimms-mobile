@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { Animated, Pressable, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { AppIcon } from "@/components/ui/Icon";
@@ -9,7 +9,7 @@ export function UploadDropzone({ onPick }: { onPick: () => void }) {
     const images = useUploadStore((s) => s.images);
 
     // Subtle pulse to attract attention when empty
-    const scaleAnim = useRef(new Animated.Value(1)).current;
+    const [scaleAnim] = useState(() => new Animated.Value(1));
     useEffect(() => {
         const loop = Animated.loop(
             Animated.sequence([
