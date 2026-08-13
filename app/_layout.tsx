@@ -9,7 +9,13 @@ import { router, Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 
-SplashScreen.preventAutoHideAsync();
+SplashScreen.preventAutoHideAsync().catch(() => {});
+
+/**
+ * Expo Router renders this instead of a white screen when a route throws while
+ * rendering, so failures surface as a readable message rather than a crash.
+ */
+export { ErrorBoundary } from "expo-router";
 
 const PUBLIC_GROUPS = ["(auth)", "(onboarding)", "legal"];
 
@@ -38,19 +44,30 @@ function AuthGate() {
 export default function RootLayout() {
     useEffect(() => {
         // Push notifications: foreground display + deep-link taps (guide §13).
-        notificationService.configureNotificationHandler();
-        const removePushListener = notificationService.addResponseListener(({ jobId, screen }) => {
-            if (screen === "designs" && jobId) {
-                router.push(`/jobs/${jobId}` as any);
-            }
-        });
+        // No-ops in Expo Go on Android, where remote push was removed in SDK 53.
+        let removePushListener = () => {};
+        try {
+            notificationService.configureNotificationHandler();
+            removePushListener = notificationService.addResponseListener(({ jobId, screen }) => {
+                if (screen === "designs" && jobId) {
+                    router.push(`/jobs/${jobId}` as any);
+                }
+            });
+        } catch (err) {
+            console.warn("[app] notification setup skipped:", err);
+        }
 
         // Offline scan queue: hydrate + auto-flush on reconnect.
-        const queue = useOfflineQueueStore.getState();
-        void queue.hydrate();
-        const stopAutoFlush = queue.startAutoFlush();
+        let stopAutoFlush = () => {};
+        try {
+            const queue = useOfflineQueueStore.getState();
+            void queue.hydrate();
+            stopAutoFlush = queue.startAutoFlush();
+        } catch (err) {
+            console.warn("[app] offline queue setup skipped:", err);
+        }
 
-        SplashScreen.hideAsync();
+        SplashScreen.hideAsync().catch(() => {});
         return () => {
             removePushListener();
             stopAutoFlush();
