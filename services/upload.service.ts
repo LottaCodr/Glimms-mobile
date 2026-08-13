@@ -8,7 +8,6 @@
  * When offline, the request is queued (AsyncStorage) and flushed on reconnect.
  */
 import NetInfo from "@react-native-community/netinfo";
-import { useOfflineQueueStore } from "@/store/offlineQueue.store";
 import {
     LocalImage,
     sessionService,
@@ -16,6 +15,19 @@ import {
     validateLocalImages,
 } from "./sessions.service";
 import type { CreateSessionInput } from "@/types/api";
+
+/**
+ * The offline queue imports this service to replay entries, so importing it
+ * back at module scope creates a require cycle (`offlineQueue.store ->
+ * upload.service -> offlineQueue.store`), which Metro warns about and which can
+ * leave one side `undefined` at init time. Resolve it lazily instead — by the
+ * time an upload actually runs, both modules are fully evaluated.
+ */
+function offlineQueue() {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return (require("@/store/offlineQueue.store") as typeof import("@/store/offlineQueue.store"))
+        .useOfflineQueueStore;
+}
 
 export type SessionStartResult =
     | { kind: "session"; sessionId: string }
@@ -36,7 +48,7 @@ export const uploadService = {
 
         const { isConnected } = await NetInfo.fetch();
         if (isConnected === false) {
-            await useOfflineQueueStore.getState().enqueue({
+            await offlineQueue().getState().enqueue({
                 vertical,
                 uris: images.map((i) => i.uri),
                 options: {
