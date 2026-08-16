@@ -85,7 +85,15 @@ export default function RootLayout() {
                  * routes like `screens/*` and `(auth)/*` that have no explicit
                  * <Stack.Screen> entry.
                  */}
-                <Stack screenOptions={{ headerShown: false }}>
+                <Stack screenOptions={{ headerShown: false }} initialRouteName="index">
+                    {/*
+                     * `index` must stay the initial route. Declaring modal screens
+                     * below reorders the navigator's routes (explicit screens come
+                     * first), which otherwise makes `preferences` the cold-start
+                     * route. Listing `index` first + initialRouteName pins the
+                     * splash as the entry point.
+                     */}
+                    <Stack.Screen name="index" />
                     <Stack.Screen name="preferences" options={{ presentation: "modal" }} />
                     <Stack.Screen name="paywall" options={{ presentation: "modal" }} />
                     <Stack.Screen name="legal/terms" options={{ presentation: "modal" }} />
