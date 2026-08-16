@@ -48,8 +48,8 @@
       ]
     ],
     "extra": {
-      "apiUrl": null,
-      "wsUrl": null,
+      "apiUrl": "https://glimms-api.onrender.com",
+      "wsUrl": "https://glimms-api.onrender.com",
       "stripePremiumPriceId": null,
       "stripeProPriceId": null
     },
