@@ -6,6 +6,8 @@ import React, { useCallback, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
+    KeyboardAvoidingView,
+    Platform,
     ScrollView,
     StyleSheet,
     Text,
@@ -15,7 +17,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Colors, Radius, Spacing, Typography } from "@/theme";
 import { AppIcon, Icons } from "@/components/ui/Icon";
@@ -41,6 +43,7 @@ function PaletteSwatch({ hex, label }: { hex: string; label: string }) {
 export default function CatalogItemScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const qc = useQueryClient();
 
     const query = useQuery({
@@ -159,20 +162,28 @@ export default function CatalogItemScreen() {
                     onAction={() => router.back()}
                 />
             ) : (
-                <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-                    {/* Hero */}
-                    <View style={[styles.hero, { backgroundColor: item.color?.dominant?.hex ?? Colors.card2 }]}>
-                        {(imageUri ?? item.imageUrl) ? (
-                            <Image
-                                source={{ uri: imageUri ?? item.imageUrl! }}
-                                style={StyleSheet.absoluteFill}
-                                contentFit="contain"
-                                onError={onImageError}
-                                transition={180}
-                            />
-                        ) : (
-                            <AppIcon name={Icons.wardrobe} size={52} color={Colors.mid} />
-                        )}
+                <KeyboardAvoidingView
+                    style={{ flex: 1 }}
+                    behavior={Platform.OS === "ios" ? "padding" : undefined}
+                >
+                    <ScrollView
+                        contentContainerStyle={[styles.scroll, { paddingBottom: 60 + insets.bottom }]}
+                        showsVerticalScrollIndicator={false}
+                        keyboardShouldPersistTaps="handled"
+                    >
+                        {/* Hero */}
+                        <View style={[styles.hero, { backgroundColor: item.color?.dominant?.hex ?? Colors.card2 }]}>
+                            {(imageUri ?? item.imageUrl) ? (
+                                <Image
+                                    source={{ uri: imageUri ?? item.imageUrl! }}
+                                    style={StyleSheet.absoluteFill}
+                                    contentFit="contain"
+                                    onError={onImageError}
+                                    transition={180}
+                                />
+                            ) : (
+                                <AppIcon name={Icons.wardrobe} size={52} color={Colors.mid} />
+                            )}
                         <View style={styles.verticalChip}>
                             <AppIcon name={Icons.wardrobe} size={11} color={Colors.black} style={{ marginRight: 4 }} />
                             <Text style={styles.verticalChipText}>{item.vertical}</Text>
@@ -302,10 +313,11 @@ export default function CatalogItemScreen() {
                         Added {new Date(item.createdAt).toLocaleDateString()}
                     </Text>
 
-                    {update.isPending || del.isPending ? (
-                        <ActivityIndicator color={Colors.gold} style={{ marginTop: 8 }} />
-                    ) : null}
-                </ScrollView>
+                        {update.isPending || del.isPending ? (
+                            <ActivityIndicator color={Colors.gold} style={{ marginTop: 8 }} />
+                        ) : null}
+                    </ScrollView>
+                </KeyboardAvoidingView>
             )}
         </SafeAreaView>
     );

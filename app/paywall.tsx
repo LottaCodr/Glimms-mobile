@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSubscription } from "@/hooks/useSubscription";
 import { PricingCard } from "@/components/premium/PricingCard";
 import { useAuthStore } from "@/store/auth.store";
@@ -22,6 +22,7 @@ import { Colors, Spacing, Typography } from "@/theme";
 
 export default function PaywallScreen() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const { plans, loading, error, subscribe } = useSubscription();
     const user = useAuthStore((s) => s.user);
     const [notice, setNotice] = useState<string | null>(null);
@@ -52,7 +53,10 @@ export default function PaywallScreen() {
                 </TouchableOpacity>
             </View>
 
-            <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+            <ScrollView
+                contentContainerStyle={[styles.scroll, { paddingBottom: 48 + insets.bottom }]}
+                showsVerticalScrollIndicator={false}
+            >
                 {plans.filter((p) => p.id !== "free").map((plan) => (
                     <PricingCard
                         key={plan.id}

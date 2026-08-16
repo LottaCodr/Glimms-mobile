@@ -1,7 +1,7 @@
 import React from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Colors, Spacing, Typography } from "@/theme";
 import { IconButton } from "@/components/ui/IconButton";
 
@@ -14,6 +14,7 @@ type Props = {
 /** Shared branded legal/document screen (Terms, Privacy). */
 export function LegalDocument({ title, updated, sections }: Props) {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     return (
         <SafeAreaView style={styles.container} edges={["top"]}>
             <View style={styles.header}>
@@ -29,7 +30,7 @@ export function LegalDocument({ title, updated, sections }: Props) {
                         <Text style={styles.body}>{s.body}</Text>
                     </View>
                 ))}
-                <View style={{ height: Spacing.xl }} />
+                <View style={{ height: Spacing.xl + insets.bottom }} />
             </ScrollView>
         </SafeAreaView>
     );

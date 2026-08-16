@@ -1,9 +1,10 @@
 import React, { useState } from 'react'
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  SafeAreaView, FlatList,
+  FlatList,
 } from 'react-native'
 import { useRouter } from 'expo-router'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { Colors, Radius, Spacing } from '@/theme'
 import { OutfitCard } from '@/components/buttons'
 import { AppIcon } from '@/components/ui/Icon'

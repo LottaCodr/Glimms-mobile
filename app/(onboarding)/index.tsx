@@ -8,13 +8,13 @@ import {
     Image,
     Platform,
     Pressable,
-    SafeAreaView,
     ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuthStore } from "@/store/auth.store"; // <-- import the store
 
 function getThemeColor(theme: any, key: string, fallback: string) {
@@ -151,14 +151,17 @@ export default function OnboardingIntro() {
     // While checking auth, just show splash or spinner
     if (checkingAuth) {
         return (
-            <SafeAreaView style={[styles.safeArea, { backgroundColor, justifyContent: 'center', alignItems: 'center' }]}>
+            <SafeAreaView
+                style={[styles.safeArea, { backgroundColor, justifyContent: 'center', alignItems: 'center' }]}
+                edges={["top", "bottom"]}
+            >
                 <ActivityIndicator size="large" color={primaryColor} />
             </SafeAreaView>
         );
     }
 
     return (
-        <SafeAreaView style={[styles.safeArea, { backgroundColor }]}>
+        <SafeAreaView style={[styles.safeArea, { backgroundColor }]} edges={["top", "bottom"]}>
             <View style={styles.container}>
                 {/* Logo */}
                 <View style={styles.logoRow}>

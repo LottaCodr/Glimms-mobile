@@ -1,6 +1,7 @@
 import React from 'react'
-import { View, Text, StyleSheet, ScrollView, SafeAreaView } from 'react-native'
+import { View, Text, StyleSheet, ScrollView } from 'react-native'
 import { useRouter } from 'expo-router'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Colors, Radius, Spacing, Typography } from '@/theme'
 import { GoldButton, BackButton } from '@/components/buttons'
 import { AppIcon, IoniconName } from '@/components/ui/Icon'
@@ -13,9 +14,10 @@ const STEPS: { step: string; title: string; icon: IoniconName; desc: string }[] 
 
 export default function HowItWorksScreen() {
   const router = useRouter()
+  const insets = useSafeAreaInsets()
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <BackButton onPress={() => router.back()} />
@@ -58,7 +60,7 @@ export default function HowItWorksScreen() {
         </View>
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, Spacing.lg) }]}>
         <GoldButton label="Build My Style Profile" onPress={() => router.push('/(onboarding)/quiz-style')} />
       </View>
     </SafeAreaView>

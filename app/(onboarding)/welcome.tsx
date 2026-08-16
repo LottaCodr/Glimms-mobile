@@ -1,6 +1,7 @@
 import React from 'react'
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView } from 'react-native'
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
 import { useRouter } from 'expo-router'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { Colors, Radius, Spacing, Typography } from '@/theme'
 import { GoldButton } from '@/components/buttons'
 
@@ -8,7 +9,7 @@ export default function WelcomeScreen() {
   const router = useRouter()
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.inner}>
 
         {/* Logo */}

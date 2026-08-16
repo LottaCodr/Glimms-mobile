@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppIcon, Icons } from "@/components/ui/Icon";
 import { IconButton } from "@/components/ui/IconButton";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -53,6 +53,7 @@ function stepMeta(status: StepStatus): { icon: string; color: string } {
 export default function SessionScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const session = useDesignSession(id ?? null);
     const saveDesign = useSaveDesign();
     const [savedKeys, setSavedKeys] = useState<Record<number, boolean>>({});
@@ -136,7 +137,10 @@ export default function SessionScreen() {
                     </View>
                 )}
 
-                <ScrollView contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
+                <ScrollView
+                    contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 60 + insets.bottom }}
+                    showsVerticalScrollIndicator={false}
+                >
                     {session.designs.map((design, i) => {
                         const mockup = design.mockupUrl ?? design.mockup_url;
                         const isSaved = !!savedKeys[i];

@@ -1,7 +1,18 @@
 import React, { useState } from 'react'
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, TextInput, ActivityIndicator } from 'react-native'
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  TextInput,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native'
 import { useRouter } from 'expo-router'
 import * as Location from 'expo-location'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Colors, Radius, Spacing, Typography } from '@/theme'
 import { BackButton, GoldButton, ProgressDots } from '@/components/buttons'
 import { useOnboardingStore } from '@/store/onboarding.store'
@@ -11,6 +22,7 @@ const CITIES = ['Lagos, Nigeria','London, UK','New York, USA','Dubai, UAE','Nair
 
 export default function QuizLocationScreen() {
   const router = useRouter()
+  const insets = useSafeAreaInsets()
   const city = useOnboardingStore((s) => s.answers.city ?? '')
   const setCity = useOnboardingStore((s) => s.setCity)
   const setLocation = useOnboardingStore((s) => s.setLocation)
@@ -43,47 +55,56 @@ export default function QuizLocationScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <View style={styles.topRow}>
-          <BackButton onPress={() => router.back()} />
-          <ProgressDots current={2} total={3} />
-          <View style={{ width: 36 }} />
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.topRow}>
+            <BackButton onPress={() => router.back()} />
+            <ProgressDots current={2} total={3} />
+            <View style={{ width: 36 }} />
+          </View>
+
+          <Text style={styles.label}>3 OF 3</Text>
+          <Text style={styles.title}>Where are{'\n'}<Text style={styles.accent}>you based?</Text></Text>
+          <Text style={styles.sub}>For climate-aware styling recommendations</Text>
+
+          <View style={styles.inputRow}>
+            <AppIcon name="location-outline" size={18} color={Colors.mid} />
+            <TextInput
+              value={city}
+              onChangeText={setCity}
+              placeholder="Enter your city…"
+              placeholderTextColor={Colors.mid}
+              style={styles.input}
+            />
+          </View>
+
+          <Text style={styles.cityLabel}>POPULAR CITIES</Text>
+          <View style={styles.cityChips}>
+            {CITIES.map((c) => (
+              <TouchableOpacity
+                key={c}
+                onPress={() => setCity(c)}
+                style={[styles.chip, city === c && styles.chipActive]}
+              >
+                <Text style={[styles.chipText, city === c && { color: Colors.gold }]}>{c}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
+
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, Spacing.lg) }]}>
+          <GoldButton label="Create My Style Profile" onPress={resolveAndContinue} />
+          {resolving && <ActivityIndicator color={Colors.gold} style={{ marginTop: 10 }} />}
         </View>
-
-        <Text style={styles.label}>3 OF 3</Text>
-        <Text style={styles.title}>Where are{'\n'}<Text style={styles.accent}>you based?</Text></Text>
-        <Text style={styles.sub}>For climate-aware styling recommendations</Text>
-
-        <View style={styles.inputRow}>
-          <AppIcon name="location-outline" size={18} color={Colors.mid} />
-          <TextInput
-            value={city}
-            onChangeText={setCity}
-            placeholder="Enter your city…"
-            placeholderTextColor={Colors.mid}
-            style={styles.input}
-          />
-        </View>
-
-        <Text style={styles.cityLabel}>POPULAR CITIES</Text>
-        <View style={styles.cityChips}>
-          {CITIES.map((c) => (
-            <TouchableOpacity
-              key={c}
-              onPress={() => setCity(c)}
-              style={[styles.chip, city === c && styles.chipActive]}
-            >
-              <Text style={[styles.chipText, city === c && { color: Colors.gold }]}>{c}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </ScrollView>
-
-      <View style={styles.footer}>
-        <GoldButton label="Create My Style Profile" onPress={resolveAndContinue} />
-        {resolving && <ActivityIndicator color={Colors.gold} style={{ marginTop: 10 }} />}
-      </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   )
 }

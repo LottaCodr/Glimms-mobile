@@ -7,7 +7,7 @@ import React from "react";
 import { Alert, ScrollView, Share, StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 import { Colors, Radius, Spacing, Typography } from "@/theme";
 import { AppIcon, Icons } from "@/components/ui/Icon";
@@ -30,6 +30,7 @@ function findInCaches(qc: ReturnType<typeof useQueryClient>, id: string): SavedD
 export default function SavedDetailScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const qc = useQueryClient();
 
     // Re-derive on every render so optimistic favorite toggles reflect instantly.
@@ -110,7 +111,10 @@ export default function SavedDetailScreen() {
                 </View>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+            <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={[styles.scroll, { paddingBottom: 60 + insets.bottom }]}
+            >
                 {/* Hero */}
                 <View style={styles.heroWrap}>
                     {design.mockupUrl ? (

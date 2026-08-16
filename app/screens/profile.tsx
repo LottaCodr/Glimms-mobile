@@ -10,10 +10,11 @@ import React, { useState } from 'react'
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
   ScrollView, Alert, ActivityIndicator, Modal,
+  KeyboardAvoidingView, Platform,
 } from 'react-native'
 import { Image } from 'expo-image'
 import { useRouter } from 'expo-router'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useQuery } from '@tanstack/react-query'
 import { Colors, Radius, Spacing, Typography } from '@/theme'
 import { AppIcon, Icons, IoniconName } from '@/components/ui/Icon'
@@ -35,6 +36,7 @@ type MenuItem = {
 
 export default function NewProfileScreen() {
   const router = useRouter()
+  const insets = useSafeAreaInsets()
   const { user, logout, setUser } = useAuthStore()
   const analytics = useAnalyticsSummary()
   const { subscription } = useSubscription()
@@ -138,7 +140,10 @@ export default function NewProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.scroll, { paddingBottom: 120 + insets.bottom }]}
+      >
 
         {/* Header */}
         <View style={styles.header}>
@@ -267,7 +272,10 @@ export default function NewProfileScreen() {
 
       {/* Edit-name modal */}
       <Modal visible={editOpen} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
+        <KeyboardAvoidingView
+          style={styles.modalBackdrop}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Edit profile</Text>
             <TextInput
@@ -300,7 +308,7 @@ export default function NewProfileScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   )
