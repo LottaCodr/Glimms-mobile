@@ -78,21 +78,18 @@ export default function RootLayout() {
         <QueryProvider>
             <ThemeProvider>
                 <AuthGate />
-                <Stack>
-                    <Stack.Screen name="index" options={{ headerShown: false }} />
-                    <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
-                    <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                    <Stack.Screen name="screens" options={{ headerShown: false }} />
-                    <Stack.Screen name="session/[id]" options={{ headerShown: false }} />
-                    <Stack.Screen name="jobs/[id]" options={{ headerShown: false }} />
-                    <Stack.Screen name="catalog/[id]" options={{ headerShown: false }} />
-                    <Stack.Screen name="saved/[id]" options={{ headerShown: false }} />
-                    <Stack.Screen name="activity" options={{ headerShown: false }} />
-                    <Stack.Screen name="preferences" options={{ headerShown: false, presentation: "modal" }} />
-                    <Stack.Screen name="paywall" options={{ headerShown: false, presentation: "modal" }} />
-                    <Stack.Screen name="legal/terms" options={{ headerShown: false, presentation: "modal" }} />
-                    <Stack.Screen name="legal/privacy" options={{ headerShown: false, presentation: "modal" }} />
+                {/*
+                 * Every screen renders its own branded header, so no route should
+                 * fall back to a native title bar (which otherwise defaults to the
+                 * route path, e.g. "screens/scan"). `screenOptions` covers nested
+                 * routes like `screens/*` and `(auth)/*` that have no explicit
+                 * <Stack.Screen> entry.
+                 */}
+                <Stack screenOptions={{ headerShown: false }}>
+                    <Stack.Screen name="preferences" options={{ presentation: "modal" }} />
+                    <Stack.Screen name="paywall" options={{ presentation: "modal" }} />
+                    <Stack.Screen name="legal/terms" options={{ presentation: "modal" }} />
+                    <Stack.Screen name="legal/privacy" options={{ presentation: "modal" }} />
                 </Stack>
                 <OfflineBanner />
                 <Toaster />

@@ -1,6 +1,7 @@
 import React from 'react'
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView } from 'react-native'
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
 import { useRouter } from 'expo-router'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Colors, Radius, Spacing, Typography } from '@/theme'
 import { BackButton, GoldButton, ProgressDots } from '@/components/buttons'
 import { useOnboardingStore } from '@/store/onboarding.store'
@@ -15,11 +16,12 @@ const STYLES = [
 
 export default function QuizStyleScreen() {
   const router = useRouter()
+  const insets = useSafeAreaInsets()
   const selected = useOnboardingStore((s) => s.answers.styleGoal)
   const setSelected = useOnboardingStore((s) => s.setStyleGoal)
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.inner}>
         <View style={styles.topRow}>
           <BackButton onPress={() => router.back()} />
@@ -58,7 +60,7 @@ export default function QuizStyleScreen() {
         </View>
       </View>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, Spacing.lg) }]}>
         <GoldButton
           label="Continue"
           onPress={() => router.push('/(onboarding)/quiz-occasion')}

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "glimms",
+    "name": "GLIMMS",
     "slug": "glimms",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,10 +8,30 @@
     "scheme": "glimms",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "backgroundColor": "#09090B",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.glimms.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "GLIMMS uses the camera to photograph your clothes and items so the AI can create outfit ideas for you.",
+        "NSMicrophoneUsageDescription": "GLIMMS does not record audio. This permission is only listed because the camera API requires it.",
+        "NSPhotoLibraryUsageDescription": "GLIMMS uses your photo library so you can add existing photos of your clothes and items.",
+        "NSPhotoLibraryAddUsageDescription": "GLIMMS saves design mockups to your photo library when you choose to export them.",
+        "NSLocationWhenInUseUsageDescription": "GLIMMS uses your approximate location to tailor style suggestions to your local weather and climate.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
+      "package": "com.glimms.app",
+      "versionCode": 1,
+      "permissions": [
+        "CAMERA",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "POST_NOTIFICATIONS",
+        "VIBRATE"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -27,6 +47,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-updates",
       [
         "expo-splash-screen",
         {
@@ -39,14 +60,48 @@
           }
         }
       ],
-      "expo-secure-store",
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": true,
+          "faceIDPermission": "Allow GLIMMS to use Face ID to keep your session secure."
+        }
+      ],
       [
         "expo-notifications",
         {
           "color": "#BF9245"
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow GLIMMS to access your camera to photograph your clothes and items.",
+          "microphonePermission": "Allow GLIMMS to access the microphone. Audio is never recorded.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow GLIMMS to access your photos so you can add items to your closet.",
+          "cameraPermission": "Allow GLIMMS to access your camera to photograph your items.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow GLIMMS to use your location for climate-aware style recommendations."
+        }
       ]
     ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
     "extra": {
       "apiUrl": "https://glimms-api.onrender.com",
       "wsUrl": "https://glimms-api.onrender.com",

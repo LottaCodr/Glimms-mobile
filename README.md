@@ -98,9 +98,52 @@ For some additional implementation notes, see `PROJECT.md`.
 ### Environment & Config
 
 - Project configuration: `app.json`
+- EAS build profiles: `eas.json` (development / preview / production)
 - Environment / API config: `config/env.ts` (add your keys and base URLs here as needed)
 
 If you introduce new environment values, prefer reading them from `env.ts` so configuration stays in one place.
+
+---
+
+### Building for the Stores (EAS, Google Play, App Store)
+
+The project is pre-configured for EAS Build and store submission:
+
+- **Identifiers** — `ios.bundleIdentifier` and `android.package` are set to
+  `com.glimms.app`. Change them to your own reverse-DNS identifier **before**
+  your first store submission (identifiers are permanent on both stores once
+  used).
+- **App identity** — display name `GLIMMS`, `version` 1.0.0, `versionCode` 1,
+  `buildNumber` 1. `autoIncrement` is enabled for production builds in `eas.json`.
+- **Permissions** — camera, photo library, location, notifications and
+  microphone usage strings are declared in `app.json` (required for App Store
+  review; Android permissions are merged by the config plugins).
+- **Updates** — `expo-updates` is installed with an app-version-pinned
+  `runtimeVersion`, so OTA updates work once the project is linked to EAS.
+
+Steps:
+
+```bash
+# 1. Install the EAS CLI and log in (one-time)
+npm install -g eas-cli
+eas login
+
+# 2. Link the project to EAS (creates the remote project and sets the updates URL)
+eas init
+
+# 3. Build
+eas build --profile preview        # shareable test build
+eas build --profile production     # store-ready .aab / .ipa
+
+# 4. Submit
+eas submit --platform ios          # App Store (needs ASC credentials)
+eas submit --platform android      # Google Play (needs a service account key)
+```
+
+Before submitting, also complete the store listing requirements (screenshots,
+privacy policy URL, content ratings) and set real Stripe price IDs via
+`EXPO_PUBLIC_STRIPE_PREMIUM_PRICE_ID` / `EXPO_PUBLIC_STRIPE_PRO_PRICE_ID`
+(or the matching `extra` values in `app.json`).
 
 ---
 

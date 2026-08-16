@@ -1,6 +1,17 @@
 import React, { useState } from 'react'
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, TextInput, Alert } from 'react-native'
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  TextInput,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native'
 import { useRouter } from 'expo-router'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { Colors, Radius, Spacing, Typography } from '@/theme'
 import { BackButton, GoldButton, Divider } from '@/components/buttons'
 import { useAuthStore } from '@/store/auth.store'
@@ -69,9 +80,17 @@ export default function SignUpScreen() {
   const notAvailable = () => Alert.alert('Coming soon', 'Social sign-in will be available in a future update.')
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <BackButton onPress={() => router.back()} />
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <BackButton onPress={() => router.back()} />
 
         <View style={styles.copy}>
           <Text style={styles.label}>ALMOST THERE</Text>
@@ -131,12 +150,13 @@ export default function SignUpScreen() {
           <Text style={[styles.legal, { color: Colors.gold }]}>Already have an account? Sign in</Text>
         </TouchableOpacity>
 
-        <Text style={styles.legal}>
-          By continuing you agree to our{' '}
-          <Text style={{ color: Colors.gold }} onPress={() => router.push('/legal/terms')}>Terms</Text> &amp;{' '}
-          <Text style={{ color: Colors.gold }} onPress={() => router.push('/legal/privacy')}>Privacy Policy</Text>
-        </Text>
-      </ScrollView>
+          <Text style={styles.legal}>
+            By continuing you agree to our{' '}
+            <Text style={{ color: Colors.gold }} onPress={() => router.push('/legal/terms')}>Terms</Text> &amp;{' '}
+            <Text style={{ color: Colors.gold }} onPress={() => router.push('/legal/privacy')}>Privacy Policy</Text>
+          </Text>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   )
 }

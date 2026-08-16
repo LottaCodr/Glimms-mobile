@@ -13,7 +13,7 @@ import {
     View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Colors, Radius, Spacing, Typography } from "@/theme";
 import { AppIcon, Icons } from "@/components/ui/Icon";
@@ -80,6 +80,7 @@ function SessionRow({ session }: { session: DesignSession }) {
 
 export default function ActivityScreen() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const query = useInfiniteQuery({
         queryKey: ["sessions"],
         queryFn: ({ pageParam = 1 }) => sessionService.list(pageParam, 20),
@@ -100,7 +101,7 @@ export default function ActivityScreen() {
             <FlatList
                 data={sessions}
                 keyExtractor={(s) => s.session_id}
-                contentContainerStyle={styles.list}
+                contentContainerStyle={[styles.list, { paddingBottom: 60 + insets.bottom }]}
                 showsVerticalScrollIndicator={false}
                 refreshControl={
                     <RefreshControl

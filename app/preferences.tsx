@@ -6,6 +6,8 @@
 import React, { useEffect, useState } from "react";
 import {
     ActivityIndicator,
+    KeyboardAvoidingView,
+    Platform,
     ScrollView,
     StyleSheet,
     Text,
@@ -13,7 +15,7 @@ import {
     View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Location from "expo-location";
 import { Colors, Radius, Spacing } from "@/theme";
@@ -42,6 +44,7 @@ function toggle(list: string[], v: string) {
 
 export default function PreferencesScreen() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const qc = useQueryClient();
 
     const prefsQuery = useQuery({
@@ -143,11 +146,15 @@ export default function PreferencesScreen() {
                     ))}
                 </View>
             ) : (
-                <ScrollView
-                    contentContainerStyle={styles.scroll}
-                    showsVerticalScrollIndicator={false}
-                    keyboardShouldPersistTaps="handled"
+                <KeyboardAvoidingView
+                    style={{ flex: 1 }}
+                    behavior={Platform.OS === "ios" ? "padding" : undefined}
                 >
+                    <ScrollView
+                        contentContainerStyle={[styles.scroll, { paddingBottom: 60 + insets.bottom }]}
+                        showsVerticalScrollIndicator={false}
+                        keyboardShouldPersistTaps="handled"
+                    >
                     {/* Occupation */}
                     <View style={styles.section}>
                         <Text style={styles.sectionLabel}>OCCUPATION</Text>
@@ -263,8 +270,9 @@ export default function PreferencesScreen() {
                         icon="checkmark"
                         style={{ marginTop: Spacing.lg }}
                     />
-                    {saving && <ActivityIndicator color={Colors.gold} style={{ marginTop: 10 }} />}
-                </ScrollView>
+                        {saving && <ActivityIndicator color={Colors.gold} style={{ marginTop: 10 }} />}
+                    </ScrollView>
+                </KeyboardAvoidingView>
             )}
         </SafeAreaView>
     );

@@ -1,6 +1,7 @@
 import React from 'react'
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView } from 'react-native'
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
 import { useRouter } from 'expo-router'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Colors, Radius, Spacing, Typography } from '@/theme'
 import { BackButton, GoldButton, ProgressDots } from '@/components/buttons'
 import { useOnboardingStore } from '@/store/onboarding.store'
@@ -15,13 +16,14 @@ const OCCASIONS = [
 
 export default function QuizOccasionScreen() {
   const router = useRouter()
+  const insets = useSafeAreaInsets()
   // The quiz supports one primary occasion for MVP; stored as a list per API shape.
   const selected = useOnboardingStore((s) => s.answers.occasions[0] ?? null)
   const setOccasions = useOnboardingStore((s) => s.setOccasions)
   const setSelected = (id: string) => setOccasions(id === 'mix' ? ['work', 'casual', 'events'] : [id])
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.inner}>
         <View style={styles.topRow}>
           <BackButton onPress={() => router.back()} />
@@ -56,7 +58,7 @@ export default function QuizOccasionScreen() {
         })}
       </View>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, Spacing.lg) }]}>
         <GoldButton
           label="Continue"
           onPress={() => router.push('/(onboarding)/quiz-location')}

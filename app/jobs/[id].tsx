@@ -7,7 +7,7 @@ import React from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppIcon, Icons } from "@/components/ui/Icon";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { STEP_LABELS, useDesignJob } from "@/hooks/useDesignJob";
@@ -19,6 +19,7 @@ import { Colors, Radius, Spacing, Typography } from "@/theme";
 export default function JobScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const job = useDesignJob(id ?? null);
     const saveDesign = useSaveDesign();
     const [savedKeys, setSavedKeys] = React.useState<Record<number, boolean>>({});
@@ -68,7 +69,7 @@ export default function JobScreen() {
             <SafeAreaView style={styles.root} edges={["top"]}>
                 <ScrollView
                     showsVerticalScrollIndicator={false}
-                    contentContainerStyle={{ padding: Spacing.lg, paddingTop: Spacing.md, paddingBottom: 60 }}
+                    contentContainerStyle={{ padding: Spacing.lg, paddingTop: Spacing.md, paddingBottom: 60 + insets.bottom }}
                 >
                     <Text style={styles.title}>Your looks</Text>
                     <Text style={styles.sub}>

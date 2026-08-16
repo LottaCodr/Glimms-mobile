@@ -1,7 +1,8 @@
 import React, { useEffect, useCallback } from 'react'
-import { View, TouchableOpacity, StyleSheet, Platform } from 'react-native'
+import { View, TouchableOpacity, StyleSheet } from 'react-native'
 import { Tabs } from 'expo-router'
 import type { BottomTabBarProps } from 'expo-router/build/react-navigation/bottom-tabs'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -132,6 +133,13 @@ function ScanFab({ onPress }: ScanFabProps) {
 
 // ─── Custom tab bar ───────────────────────────────────────────────────────────
 export function GlimmsTabBar({ state, navigation }: BottomTabBarProps) {
+  // With edge-to-edge enabled, the system navigation bar (iOS home indicator /
+  // Android gesture pill) overlaps the bottom of the screen. The tab bar must
+  // pad itself by the real device inset so icons, labels and the scan FAB never
+  // clash with the phone's own navigation.
+  const insets = useSafeAreaInsets()
+  const bottomInset = Math.max(insets.bottom, 10)
+
   const handleTabPress = useCallback((routeKey: string, routeName: string, focused: boolean) => {
     const event = navigation.emit({ type: 'tabPress', target: routeKey, canPreventDefault: true })
     if (!focused && !event.defaultPrevented) {
@@ -145,7 +153,7 @@ export function GlimmsTabBar({ state, navigation }: BottomTabBarProps) {
       {/* Subtle top-edge gradient line */}
       <View style={tabStyles.topEdge} />
 
-      <View style={tabStyles.bar}>
+      <View style={[tabStyles.bar, { paddingBottom: bottomInset }]}>
         {state.routes.map((route, index) => {
           const tab = TAB_ITEMS[index]
           const focused = state.index === index
@@ -153,7 +161,7 @@ export function GlimmsTabBar({ state, navigation }: BottomTabBarProps) {
           // ── Scan FAB ──
           if (tab.special) {
             return (
-              <View key={route.key} style={tabStyles.fabSlot}>
+              <View key={route.key} style={[tabStyles.fabSlot, { paddingBottom: bottomInset }]}>
                 <ScanFab onPress={() => handleTabPress(route.key, route.name, focused)} />
               </View>
             )
@@ -201,7 +209,9 @@ const tabStyles = StyleSheet.create({
     flexDirection: 'row',
     height: BAR_HEIGHT,
     alignItems: 'flex-end',
-    paddingBottom: Platform.OS === 'ios' ? 24 : 12,
+    // Real device bottom inset is applied inline via useSafeAreaInsets (see
+    // GlimmsTabBar) — this value is only a fallback.
+    paddingBottom: 10,
     backgroundColor: Colors.surface,
   },
 
@@ -247,7 +257,8 @@ const tabStyles = StyleSheet.create({
     alignItems: 'center',
     // We push the FAB upward using negative bottom offset
     justifyContent: 'flex-end',
-    paddingBottom: Platform.OS === 'ios' ? 24 : 12,
+    // Real device bottom inset is applied inline via useSafeAreaInsets.
+    paddingBottom: 10,
   },
   fabContainer: {
     width: FAB_SIZE,

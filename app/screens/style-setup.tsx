@@ -7,7 +7,7 @@
 import React, { useState } from 'react'
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Colors, Radius, Spacing, Typography } from '@/theme'
 import { AppIcon, IoniconName } from '@/components/ui/Icon'
 import { IconButton } from '@/components/ui/IconButton'
@@ -49,6 +49,7 @@ function toggle(list: string[], v: string) {
 
 export default function StyleSetupScreen() {
   const params = useLocalSearchParams<{ vertical?: string }>()
+  const insets = useSafeAreaInsets()
   const { context, setOccasion, setStyles } = useContextStore()
 
   const [vertical, setVertical] = useState<Vertical>((params.vertical as Vertical) ?? 'wardrobe')
@@ -181,7 +182,7 @@ export default function StyleSetupScreen() {
         </View>
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, Spacing.lg) }]}>
         <PrimaryButton
           label={`Continue to ${vertical} scan`}
           icon="camera-outline"
