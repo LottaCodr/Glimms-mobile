@@ -55,7 +55,16 @@ For some additional implementation notes, see `PROJECT.md`.
    npm ci
    ```
 
-2. **Run the app with the project-local Expo CLI**
+2. **Configure and start the Glimms API**
+
+   Account creation and sign-in require the separate `glimms-api` server on
+   port 4000. In normal LAN development, the app automatically uses the same
+   computer that is running Metro. For Expo tunnel mode, production builds, or
+   an API running elsewhere, copy `.env.example` to `.env` and set
+   `EXPO_PUBLIC_API_URL` and `EXPO_PUBLIC_WS_URL` to URLs reachable by the device.
+   Do not use `localhost` for a physical phone—it refers to the phone itself.
+
+3. **Run the app with the project-local Expo CLI**
 
    ```bash
    npm run start
