@@ -53,6 +53,8 @@ export default function SignUpScreen() {
           setError('Too many attempts — please wait about 15 minutes and try again.')
         } else if (err.code === 'VALIDATION_ERROR') {
           setError(err.fieldError() ?? 'Please check the highlighted fields.')
+        } else if (err.isNetworkError) {
+          setError("Can't reach the server — check your connection and try again.")
         } else {
           setError(err.message)
         }

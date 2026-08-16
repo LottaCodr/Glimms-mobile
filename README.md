@@ -55,7 +55,15 @@ For some additional implementation notes, see `PROJECT.md`.
    npm ci
    ```
 
-2. **Run the app with the project-local Expo CLI**
+2. **API configuration**
+
+   Account creation and sign-in use the hosted `glimms-api` configured in
+   `app.json`. To use a local or alternate API, copy `.env.example` to `.env`
+   and set `EXPO_PUBLIC_API_URL` and `EXPO_PUBLIC_WS_URL`; environment values
+   override `app.json`. A local URL must be reachable by the device. Do not use
+   `localhost` for a physical phone—it refers to the phone itself.
+
+3. **Run the app with the project-local Expo CLI**
 
    ```bash
    npm run start
