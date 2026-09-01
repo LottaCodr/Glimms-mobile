@@ -26,11 +26,11 @@
       "package": "com.glimms.app",
       "versionCode": 1,
       "permissions": [
-        "CAMERA",
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION",
-        "POST_NOTIFICATIONS",
-        "VIBRATE"
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.VIBRATE"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
@@ -105,12 +105,17 @@
     "extra": {
       "apiUrl": "https://glimms-api.onrender.com",
       "wsUrl": "https://glimms-api.onrender.com",
-      "stripePremiumPriceId": null,
-      "stripeProPriceId": null
+      "stripePremiumPriceId": {},
+      "stripeProPriceId": {},
+      "router": {},
+      "eas": {
+        "projectId": "2b4900ae-b72b-4376-804c-1b71e72282ec"
+      }
     },
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "owner": "lota.io"
   }
 }
