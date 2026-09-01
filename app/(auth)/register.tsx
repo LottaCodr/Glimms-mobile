@@ -1,3 +1,4 @@
+import { BrandLogo } from "@/components/brand/BrandLogo";
 import { ApiError } from "@/services/api.client";
 import { useAuthStore } from "@/store/auth.store";
 import { AppIcon, IoniconName } from "@/components/ui/Icon";
@@ -87,7 +88,7 @@ export default function Register() {
                     {/* Brand */}
                     <View style={styles.brandRow}>
                         <View style={styles.brandBadge}>
-                            <AppIcon name="sparkles" size={22} color={Colors.black} />
+                            <BrandLogo variant="mark" width={36} />
                         </View>
                     </View>
 
@@ -227,17 +228,19 @@ const styles = StyleSheet.create({
     },
     brandRow: { alignItems: "center", marginBottom: Spacing.lg },
     brandBadge: {
-        width: 52,
-        height: 52,
+        width: 58,
+        height: 58,
         borderRadius: Radius.lg,
-        backgroundColor: Colors.gold,
+        backgroundColor: Colors.goldGlow,
+        borderWidth: 1,
+        borderColor: "rgba(191,146,69,0.28)",
         alignItems: "center",
         justifyContent: "center",
         shadowColor: Colors.gold,
-        shadowOpacity: 0.45,
+        shadowOpacity: 0.35,
         shadowRadius: 22,
         shadowOffset: { width: 0, height: 0 },
-        elevation: 10,
+        elevation: 8,
     },
     header: {
         fontSize: 28,

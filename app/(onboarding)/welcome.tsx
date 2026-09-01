@@ -2,7 +2,8 @@ import React from 'react'
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { Colors, Radius, Spacing, Typography } from '@/theme'
+import { Colors, Spacing, Typography } from '@/theme'
+import { BrandLogo } from '@/components/brand/BrandLogo'
 import { GoldButton } from '@/components/buttons'
 
 export default function WelcomeScreen() {
@@ -14,10 +15,7 @@ export default function WelcomeScreen() {
 
         {/* Logo */}
         <View style={styles.logoWrap}>
-          <View style={styles.logoBox}>
-            <Text style={styles.logoLetter}>G</Text>
-          </View>
-          <Text style={styles.wordmark}>Glimms</Text>
+          <BrandLogo variant="compact" width={132} />
           <Text style={styles.tagline}>STYLE INTELLIGENCE</Text>
         </View>
 
@@ -55,20 +53,15 @@ export default function WelcomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
   inner: { flex: 1, paddingHorizontal: Spacing.lg, justifyContent: 'space-between', paddingBottom: Spacing.lg },
-  logoWrap: { alignItems: 'center', paddingTop: 60 },
-  logoBox: {
-    width: 80, height: 80,
-    backgroundColor: Colors.gold,
-    borderRadius: Radius.xxl,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: Spacing.md,
-    shadowColor: Colors.gold, shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5, shadowRadius: 30,
-    elevation: 12,
+  logoWrap: {
+    alignItems: 'center',
+    paddingTop: 42,
+    shadowColor: Colors.gold,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.22,
+    shadowRadius: 24,
   },
-  logoLetter: { fontSize: 38, fontFamily: Typography.serif, fontWeight: '700', color: Colors.black },
-  wordmark: { fontSize: 44, fontFamily: Typography.serif, fontStyle: 'italic', fontWeight: '300', color: Colors.text, letterSpacing: -0.5 },
-  tagline: { fontSize: 11, letterSpacing: 3, color: Colors.mid, marginTop: 4 },
+  tagline: { fontSize: 10, letterSpacing: 3, color: Colors.mid, marginTop: 10 },
   copy: { alignItems: 'center' },
   headline: { fontSize: 32, fontFamily: Typography.serif, fontWeight: '300', color: Colors.cream, textAlign: 'center', lineHeight: 40, marginBottom: 14 },
   headlineAccent: { fontStyle: 'italic', color: Colors.gold },
