@@ -1,5 +1,5 @@
+import { BrandLogo } from "@/components/brand/BrandLogo";
 import { useTheme } from "@/provider/ThemeProvider";
-import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -165,10 +165,7 @@ export default function OnboardingIntro() {
             <View style={styles.container}>
                 {/* Logo */}
                 <View style={styles.logoRow}>
-                    <View style={[styles.logoCircle, { backgroundColor: primaryColor + "26" }]}>
-                        <Ionicons name="sparkles" size={26} color={primaryColor} />
-                    </View>
-                    <Text style={[styles.logoText, { color: textColor }]}>GLIMMS</Text>
+                    <BrandLogo variant="compact" width={52} color={primaryColor} />
                 </View>
 
                 {/* Slideshow */}
@@ -354,29 +351,11 @@ const styles = StyleSheet.create({
     },
 
     logoRow: {
-        flexDirection: "row",
-        alignItems: "center",
-        marginBottom: 26,
-        marginTop: 4,
-    },
-
-    logoCircle: {
-        width: 43,
-        height: 43,
-        borderRadius: 22,
         alignItems: "center",
         justifyContent: "center",
-        marginRight: 12,
-    },
-
-
-
-    logoText: {
-        fontSize: 19,
-        fontWeight: "bold",
-        letterSpacing: 3,
-        textTransform: "uppercase",
-        opacity: 0.95,
+        marginBottom: 18,
+        marginTop: 4,
+        minHeight: 73,
     },
 
     heroWrapper: {

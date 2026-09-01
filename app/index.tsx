@@ -1,5 +1,7 @@
+import { BrandLogo } from "@/components/brand/BrandLogo";
 import { useTheme } from "@/provider/ThemeProvider";
 import { useAuthStore } from "@/store/auth.store";
+import { Colors } from "@/theme";
 import { fetchHealth } from "@/services/api.client";
 import { toast } from "@/store/toast.store";
 import { useRouter } from "expo-router";
@@ -82,7 +84,7 @@ function SplashScreen() {
       <View style={styles.background}>
         {/* Center Logo */}
         <View style={styles.centerContent}>
-          <Animated.Text
+          <Animated.View
             style={[
               styles.logo,
               {
@@ -91,8 +93,8 @@ function SplashScreen() {
               },
             ]}
           >
-            GLIMMS
-          </Animated.Text>
+            <BrandLogo variant="lockup" width={150} />
+          </Animated.View>
 
           <Animated.Text style={[styles.tagline, { opacity }]}>
             STYLING INTELLIGENCE
@@ -128,7 +130,7 @@ function createStyles(theme: any, SCREEN_WIDTH: number) {
   return StyleSheet.create({
     background: {
       flex: 1,
-      backgroundColor: theme?.colors?.background || "#FBFCFE",
+      backgroundColor: theme?.colors?.bg || Colors.bg,
       alignItems: "center",
       justifyContent: "space-between",
       paddingVertical: 50,
@@ -141,16 +143,13 @@ function createStyles(theme: any, SCREEN_WIDTH: number) {
     },
 
     logo: {
-      fontWeight: "800",
-      fontSize: 34,
-      letterSpacing: 8,
-      color: theme?.colors?.primaryText || "#1A1A1A",
-      textAlign: "center",
+      alignItems: "center",
+      justifyContent: "center",
     },
 
     tagline: {
       fontSize: 12,
-      color: theme?.colors?.secondaryText || "#6B6B6B",
+      color: theme?.colors?.mid || Colors.mid,
       letterSpacing: 3,
       marginTop: 14,
       textAlign: "center",
@@ -164,7 +163,7 @@ function createStyles(theme: any, SCREEN_WIDTH: number) {
     progressBarTrack: {
       width: SCREEN_WIDTH * 0.5,
       height: 4,
-      backgroundColor: theme?.colors?.border || "#E2E5EA",
+      backgroundColor: theme?.colors?.border || Colors.border,
       borderRadius: 3,
       overflow: "hidden",
       marginBottom: 10,
@@ -172,12 +171,12 @@ function createStyles(theme: any, SCREEN_WIDTH: number) {
 
     progressBar: {
       height: "100%",
-      backgroundColor: theme?.colors?.primary || "#4792FF",
+      backgroundColor: theme?.colors?.brand?.primary || Colors.gold,
       borderRadius: 3,
     },
 
     progressText: {
-      color: theme?.colors?.caption || "#ADB4BB",
+      color: theme?.colors?.mid || Colors.mid,
       fontSize: 11,
       letterSpacing: 1.6,
       fontWeight: "500",
@@ -187,7 +186,7 @@ function createStyles(theme: any, SCREEN_WIDTH: number) {
     productCredit: {
       fontSize: 10,
       letterSpacing: 2.5,
-      color: theme?.colors?.secondaryText || "#9AA1A9",
+      color: theme?.colors?.mid || Colors.mid,
       opacity: 0.8,
     },
   });
