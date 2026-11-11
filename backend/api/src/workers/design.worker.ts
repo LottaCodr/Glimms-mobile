@@ -1,5 +1,6 @@
 import { Worker, Job } from 'bullmq';
 import crypto from 'crypto';
+import { buildMockupLayers } from './mockupLayers';
 import { config } from '../config';
 import { logger } from '../lib/logger';
 import { designsService } from '../services/designs.service';
@@ -146,14 +147,11 @@ async function runLegacyPipeline(job: Job<DesignJobData>): Promise<void> {
     emit(jobId, 'job:update', { status: 'processing', step: 'compositing', progress: 85 });
 
     // Compose one mockup per design. The service contract is
-    // { layers:[{image_key,bbox}], output_key } — it takes S3 keys, not designs.
+    // { layers:[{image_key,crop}], output_key } — it takes S3 keys, not designs.
     const finalDesigns: Record<string, unknown>[] = [];
     for (const design of reasonedDesigns) {
       const permId = ((design as any).id as string) ?? `perm_${crypto.randomBytes(6).toString('hex')}`;
-      const layers = (((design as any).items as any[]) ?? enrichedItems.slice(0, 2)).map((it: any) => ({
-        image_key: it.image_key ?? imageKeys[0],
-        bbox: it.bbox ?? { x: 90, y: 120, width: 530, height: 620 },
-      }));
+      const layers = buildMockupLayers((design as any).items ?? enrichedItems.slice(0, 2), imageKeys[0]);
       const outputKey = `users/${userId}/jobs/${jobId}/mockups/${permId}.png`;
       try {
         const comp: any = await aiClient.compose(
@@ -432,10 +430,7 @@ async function runSessionPipeline(job: Job<any>): Promise<void> {
     const artifacts: any[] = [];
     for (const design of designs) {
       const permId = (design as any).id ?? `perm_${crypto.randomBytes(6).toString('hex')}`;
-      const layers = ((design as any).items ?? enrichedItems.slice(0,2)).map((it:any)=> ({
-        image_key: it.image_key ?? imageKeys[0],
-        bbox: it.bbox ?? { x: 90, y: 120, width: 530, height: 620 },
-      }));
+      const layers = buildMockupLayers((design as any).items ?? enrichedItems.slice(0, 2), imageKeys[0]);
       const outputKey = `users/${userId}/sessions/${sessionId}/mockups/${permId}.png`;
       try {
         const compRes = await aiClient.compose({ layers, output_key: outputKey, width: 1200, height: 900, format: 'png', background: '#f7f4ef' }, correlationId);
@@ -453,7 +448,6 @@ async function runSessionPipeline(job: Job<any>): Promise<void> {
         });
       } catch (err:any) {
         logger.warn({ err: err.message, permId, sessionId }, 'Mockup compose failed for permutation — skipping');
-        // Per guide, Pillow cutouts are not segmentation-aware — it's a future enhancement; log and continue
       }
     }
     await setStep('mockups', 'completed', 98, { artifacts });

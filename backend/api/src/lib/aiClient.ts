@@ -1,5 +1,6 @@
 import axios, { AxiosRequestConfig } from 'axios';
 import { config } from '../config';
+import type { MockupLayer } from '../workers/mockupLayers';
 import { AI_SERVICE_SLUGS, aiUrlsBySlug } from '../config/aiUrls';
 import {
   AiFallbackBlockedError,
@@ -226,7 +227,7 @@ export const aiClient = {
   },
 
   // §5.8 Mockup compositor POST /compose — slow path: image work + S3 round trips
-  async compose(params: { layers: Array<{image_key:string, bbox:any}>, output_key:string, width?:number, height?:number, format?:string, background?:string }, correlationId: string) {
+  async compose(params: { layers: MockupLayer[], output_key:string, width?:number, height?:number, format?:string, background?:string, removeBackground?:boolean }, correlationId: string) {
     return callWithRetry(async () => {
       const body: any = {
         layers: params.layers,
@@ -235,6 +236,9 @@ export const aiClient = {
         height: params.height ?? 900,
         format: params.format ?? 'png',
         background: params.background ?? '#f7f4ef',
+        // Cut each item out of its photo. The compositor keeps the original
+        // pixels if its segmentation model is unavailable.
+        remove_background: params.removeBackground ?? true,
       };
       const { data } = await axios.post(`${config.ai.mockupCompositor}/compose`, body, {
         headers: headers(correlationId),
