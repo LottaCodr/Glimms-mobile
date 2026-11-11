@@ -317,3 +317,49 @@ describe('account deactivation', () => {
     expect(rows).toEqual([{ is_active: false }]);
   });
 });
+
+describe('subscription billing endpoints (Stripe not configured)', () => {
+  it('GET /prices is public and reports that nothing is for sale', async () => {
+    const res = await request(app).get('/api/subscriptions/prices');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ prices: [] });
+    expect(res.headers['cache-control']).toContain('max-age=300');
+  });
+
+  it('POST /checkout and /portal require authentication', async () => {
+    expect((await request(app).post('/api/subscriptions/checkout').send({ tier: 'premium' })).status).toBe(401);
+    expect((await request(app).post('/api/subscriptions/portal')).status).toBe(401);
+  });
+
+  it('POST /checkout validates the plan before anything else', async () => {
+    const token = await registerUser('billing-validate@glimms.ai');
+    const auth = { Authorization: `Bearer ${token}` };
+    expect((await request(app).post('/api/subscriptions/checkout').set(auth).send({})).status).toBe(400);
+    expect((await request(app).post('/api/subscriptions/checkout').set(auth).send({ tier: 'gold' })).status).toBe(400);
+    expect((await request(app).post('/api/subscriptions/checkout').set(auth).send({ priceId: 'not-a-price' })).status).toBe(400);
+  });
+
+  it('POST /checkout and /portal answer 503 BILLING_NOT_CONFIGURED', async () => {
+    const token = await registerUser('billing-off@glimms.ai');
+    const auth = { Authorization: `Bearer ${token}` };
+
+    const checkout = await request(app).post('/api/subscriptions/checkout').set(auth).send({ tier: 'premium' });
+    expect(checkout.status).toBe(503);
+    expect(checkout.body.code).toBe('BILLING_NOT_CONFIGURED');
+
+    const portal = await request(app).post('/api/subscriptions/portal').set(auth);
+    expect(portal.status).toBe(503);
+    expect(portal.body.code).toBe('BILLING_NOT_CONFIGURED');
+  });
+
+  it('POST /webhook needs a signature, and is retried by Stripe while unconfigured', async () => {
+    const unsigned = await request(app).post('/api/subscriptions/webhook')
+      .set('Content-Type', 'application/json').send('{}');
+    expect(unsigned.status).toBe(400);
+    expect(unsigned.body.code).toBe('MISSING_SIGNATURE');
+
+    const signed = await request(app).post('/api/subscriptions/webhook')
+      .set('Content-Type', 'application/json').set('Stripe-Signature', 't=1,v1=abc').send('{}');
+    expect(signed.status).toBe(503);
+  });
+});

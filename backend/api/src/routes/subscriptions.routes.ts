@@ -6,8 +6,21 @@ import { validateBody } from '../middleware/validate.middleware';
 
 const router = Router();
 
+// A plan is named by tier (preferred) or by the price id from GET /prices.
 const checkoutSchema = z.object({
-  priceId: z.string().min(1),
+  priceId: z.string().regex(/^price_[A-Za-z0-9]+$/, 'must be a Stripe price id').optional(),
+  tier:    z.enum(['premium', 'pro']).optional(),
+}).refine((body) => body.priceId || body.tier, { message: 'priceId or tier is required', path: ['priceId'] });
+
+/**
+ * GET /api/subscriptions/prices — plans that can be bought right now.
+ * Public: the paywall is shown before sign-in too. `{ prices: [] }` means
+ * purchases are switched off.
+ */
+router.get('/prices', async (_req, res) => {
+  const prices = await subscriptionsService.listPrices();
+  res.set('Cache-Control', 'public, max-age=300');
+  res.json({ prices });
 });
 
 /** GET /api/subscriptions/me */
@@ -18,8 +31,14 @@ router.get('/me', requireAuth, async (req: AuthRequest, res) => {
 
 /** POST /api/subscriptions/checkout */
 router.post('/checkout', requireAuth, validateBody(checkoutSchema), async (req: AuthRequest, res) => {
-  const { priceId } = req.body;
-  const session = await subscriptionsService.createCheckoutSession(req.user!.sub, priceId);
+  const { priceId, tier } = req.body;
+  const session = await subscriptionsService.createCheckoutSession(req.user!.sub, { priceId, tier });
+  res.json(session);
+});
+
+/** POST /api/subscriptions/portal — Stripe billing portal (change plan, card, cancel) */
+router.post('/portal', requireAuth, async (req: AuthRequest, res) => {
+  const session = await subscriptionsService.createPortalSession(req.user!.sub);
   res.json(session);
 });
 

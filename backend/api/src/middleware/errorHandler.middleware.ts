@@ -46,6 +46,12 @@ export class BadRequestError extends AppError {
   }
 }
 
+export class ServiceUnavailableError extends AppError {
+  constructor(message: string, code = 'SERVICE_UNAVAILABLE') {
+    super(503, message, code);
+  }
+}
+
 // ── Database errors → HTTP ────────────────────────────────────────────────────
 
 /** `users_email_key` → `email`: constraints are named <table>_<column(s)>_<kind>. */

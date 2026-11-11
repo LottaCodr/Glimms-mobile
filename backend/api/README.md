@@ -186,7 +186,9 @@ No Docker on your machine? Get Postgres and Redis some other way before running 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/api/subscriptions/me` | ✅ | Current subscription |
-| POST | `/api/subscriptions/checkout` | ✅ | Create Stripe checkout |
+| GET | `/api/subscriptions/prices` | — | Plans for sale (from Stripe, cached) |
+| POST | `/api/subscriptions/checkout` | ✅ | Create Stripe checkout for a plan |
+| POST | `/api/subscriptions/portal` | ✅ | Stripe billing portal (manage / cancel) |
 | POST | `/api/subscriptions/webhook` | Stripe | Stripe webhook |
 | POST | `/api/notifications/device-token` | ✅ | Register push token |
 | POST | `/api/analytics/track` | Optional | Track event |

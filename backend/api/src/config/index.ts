@@ -68,6 +68,15 @@ const schema = z.object({
 
   STRIPE_SECRET_KEY:           z.string().optional(),
   STRIPE_WEBHOOK_SECRET:       z.string().optional(),
+  // Stripe price ids (price_…) of the paid tiers. The server is the only
+  // source of what can be bought and which tier a price grants.
+  STRIPE_PREMIUM_PRICE_ID:     blankAsUndefined(z.string().regex(/^price_[A-Za-z0-9]+$/, 'must be a Stripe price id (price_…)').optional()),
+  STRIPE_PRO_PRICE_ID:         blankAsUndefined(z.string().regex(/^price_[A-Za-z0-9]+$/, 'must be a Stripe price id (price_…)').optional()),
+  // Where Stripe sends the user after checkout / the billing portal. Use the
+  // app's deep links (glimms://…) or https pages that redirect into the app.
+  STRIPE_CHECKOUT_SUCCESS_URL: blankAsUndefined(z.string().default('https://app.glimms.ai/dashboard?upgrade=success')),
+  STRIPE_CHECKOUT_CANCEL_URL:  blankAsUndefined(z.string().default('https://app.glimms.ai/upgrade?cancelled=true')),
+  STRIPE_PORTAL_RETURN_URL:    blankAsUndefined(z.string().default('https://app.glimms.ai/dashboard')),
   STRIPE_FREE_SCAN_LIMIT:      z.string().default('10'),
   STRIPE_PREMIUM_SCAN_LIMIT:   z.string().default('100'),
 
@@ -207,6 +216,13 @@ export const config = {
   stripe: {
     secretKey:        e.STRIPE_SECRET_KEY,
     webhookSecret:    e.STRIPE_WEBHOOK_SECRET,
+    prices: {
+      premium: e.STRIPE_PREMIUM_PRICE_ID,
+      pro:     e.STRIPE_PRO_PRICE_ID,
+    },
+    checkoutSuccessUrl: e.STRIPE_CHECKOUT_SUCCESS_URL,
+    checkoutCancelUrl:  e.STRIPE_CHECKOUT_CANCEL_URL,
+    portalReturnUrl:    e.STRIPE_PORTAL_RETURN_URL,
     freeScanLimit:    parseInt(e.STRIPE_FREE_SCAN_LIMIT),
     premiumScanLimit: parseInt(e.STRIPE_PREMIUM_SCAN_LIMIT),
   },

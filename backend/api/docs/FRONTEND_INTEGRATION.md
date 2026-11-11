@@ -821,13 +821,28 @@ const { data, fetchNextPage } = useInfiniteQuery({
 ### Endpoints
 
 ```http
+GET  /api/subscriptions/prices          (public)
+→ { prices: [ { tier:"premium"|"pro", priceId, name, description, currency:"usd",
+                unitAmount: 999,        // minor units (cents)
+                interval:"month"|"year"|"week"|"day", intervalCount: 1, trialDays: null } ] }
+   // prices: [] means purchases are switched off — hide the upgrade buttons.
+   // 503 BILLING_UNAVAILABLE: Stripe could not be reached and nothing is cached.
+
 GET  /api/subscriptions/me
-→ { userId, status:"active"|"inactive"|"past_due"|"cancelled", tier:"free", stripeCustomerId, stripeSubscriptionId, currentPeriodEnd, cancelAtPeriodEnd }
+→ { userId, status:"active"|"inactive"|"past_due"|"cancelled", tier:"free"|"premium"|"pro",
+    stripeCustomerId, stripeSubscriptionId, currentPeriodEnd, cancelAtPeriodEnd }
    // For new users with no subscription, returns default free (200, not 404)
 
 POST /api/subscriptions/checkout
-Body: { priceId: string } // Stripe price ID, e.g., price_1Q...
+Body: { tier: "premium"|"pro" }   // or { priceId } with an id from GET /prices
 → { url: "https://checkout.stripe.com/c/pay/...", id: "cs_..." }
+   // 400 INVALID_PRICE           the plan is not one the server sells
+   // 409 CONFLICT                already subscribed — send the user to the portal
+   // 503 BILLING_NOT_CONFIGURED  Stripe / price ids are not set on the server
+
+POST /api/subscriptions/portal
+→ { url: "https://billing.stripe.com/p/session/..." }   // change plan, card, cancel
+   // 409 NO_BILLING_ACCOUNT      the user has never started a checkout
 
 POST /api/subscriptions/webhook
 → Stripe-only, raw body, not called by frontend
@@ -836,33 +851,24 @@ POST /api/subscriptions/webhook
 ### Frontend flow (mobile + web)
 
 1. **Show paywall** when `GET /me` → `status:"inactive"` and user hits `SCAN_LIMIT_REACHED` or taps “Upgrade”.
-2. Fetch available prices: Ideally backend should expose `GET /subscriptions/prices` (not yet implemented — **gap**). For MVP, hardcode `priceId` in frontend env:
-
-   ```bash
-   EXPO_PUBLIC_STRIPE_PREMIUM_PRICE_ID=price_123
-   EXPO_PUBLIC_STRIPE_PRO_PRICE_ID=price_456
-   ```
-
+2. **Load plans** from `GET /prices` and render name, price and interval from the response. Do not hardcode prices or price ids in the client: the server decides what is for sale and which tier a price grants.
 3. **Checkout:**
    ```ts
-   const { data } = await api.post("/api/subscriptions/checkout", { priceId });
-   // data.url is Stripe Checkout URL
-   // Mobile: open with *Expo WebBrowser*
-   import * as WebBrowser from "expo-web-browser";
+   const { data } = await api.post("/api/subscriptions/checkout", { tier: "premium" });
+   // Mobile: open with Expo WebBrowser; Web: window.location.href = data.url
    await WebBrowser.openBrowserAsync(data.url);
-   // Web: window.location.href = data.url;
    ```
+4. **Return URLs** are server settings: `STRIPE_CHECKOUT_SUCCESS_URL`, `STRIPE_CHECKOUT_CANCEL_URL`, `STRIPE_PORTAL_RETURN_URL`. Point them at the app's deep links or at https pages that redirect into the app.
+5. **Webhook:** Stripe → `POST /webhook` with `Stripe-Signature`. Backend updates `Subscription` and `User.tier`. Frontend polls `GET /me` after returning from checkout (every 2s for ~15s) to detect `status:"active"`.
+6. **Manage billing:** for a subscriber, `POST /portal` and open the returned URL the same way. Refetch `GET /me` when the browser closes.
+7. **Display tier:** `GET /users/me` returns `tier`. Show badge `FREE | PREMIUM | PRO` and scan quota from `GET /analytics/me`.
 
-4. **Return URLs:** Backend creates checkout with `success_url: https://app.glimms.ai/dashboard?upgrade=success` and `cancel_url: ...?cancelled=true`. For mobile, configure backend `STRIPE_SUCCESS_URL` to deep link (`glimms://upgrade?success=true`) — currently hardcoded to `https://app.glimms.ai` → you may need to override via env or handle web redirect that deep-links.
+### Rules the server enforces
 
-5. **Webhook:** Stripe → `POST /webhook` with `Stripe-Signature`. Backend updates `Subscription` and `User.tier`. Frontend polls `GET /me` after returning from checkout (every 2s for 10s) to detect `status:"active"`.
-
-6. **Display tier:** `GET /users/me` returns `tier`. Show badge `FREE | PREMIUM | PRO` and scan quota from `GET /analytics/me` (`scansToday`) + `GET /subscriptions/me` implied limits (`free:10, premium:100`).
-
-**Missing (to request from backend team):**
-* `GET /subscriptions/prices` (list Stripe prices)
-* `GET /subscriptions/portal` (manage billing portal URL)
-* Webhook `STRIPE_WEBHOOK_SECRET` must be set in prod or checkout will silently fail (`received:false`).
+* Only the prices in `STRIPE_PREMIUM_PRICE_ID` / `STRIPE_PRO_PRICE_ID` can be bought.
+* The tier granted comes from the **price on the Stripe subscription**, never from request data or metadata.
+* `trialing` counts as active; `past_due` keeps the tier while Stripe retries; any other state, and deletion, returns the user to `free`.
+* An invalid webhook signature is `400`; an unconfigured server answers the webhook with `503` so Stripe retries rather than dropping the event.
 
 ---
 
@@ -1295,7 +1301,9 @@ DELETE /api/designs/saved/:id        @requireAuth → { message }
 
 # Subscriptions
 GET    /api/subscriptions/me         @requireAuth → Subscription (default free if none)
-POST   /api/subscriptions/checkout   @requireAuth { priceId } → { url, id }
+GET    /api/subscriptions/prices     (public) → { prices:[{ tier, priceId, name, currency, unitAmount, interval, … }] }
+POST   /api/subscriptions/checkout   @requireAuth { tier } | { priceId } → { url, id }
+POST   /api/subscriptions/portal     @requireAuth → { url }
 POST   /api/subscriptions/webhook    Stripe raw body + Stripe-Signature → { received:true }
 
 # Notifications
