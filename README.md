@@ -10,6 +10,37 @@ GLIMMS helps users:
 
 ---
 
+### Repository layout
+
+This repository holds the whole product. The mobile app lives at the root; the
+two backend services live under `backend/` and are built, tested and deployed
+independently.
+
+| Path | What | Stack | Docs |
+|---|---|---|---|
+| `/` | Mobile app | Expo, React Native, TypeScript | this file, `PROJECT.md` |
+| `backend/api` | REST + WebSocket API, job worker | Node 20, Express, **PostgreSQL on Supabase**, Redis/BullMQ | [`backend/api/README.md`](backend/api/README.md), [`FRONTEND_INTEGRATION.md`](backend/api/docs/FRONTEND_INTEGRATION.md) |
+| `backend/ai` | AI pipeline services (stateless) | Python 3.11, FastAPI | [`backend/ai/README.md`](backend/ai/README.md) |
+
+```
+mobile app ──HTTPS/WSS──► backend/api ──► Supabase Postgres, Redis, S3
+                               └────────► backend/ai  ──► Pinecone, S3
+```
+
+The app only ever talks to `backend/api`; it never connects to the database or
+to the AI services directly.
+
+Each part has its own dependencies and tooling — run commands from its own
+directory (`npm ci` at the root installs the mobile app only). CI is split the
+same way in `.github/workflows/` (`mobile.yml`, `api.yml`, `ai.yml`), each
+triggered only by changes to its own paths. The backends are excluded from the
+app's TypeScript, ESLint, Metro and EAS build (`.easignore`).
+
+`backend/api` and `backend/ai` were imported from the former `glimms-api` and
+`glimms-ai` repositories with their full commit history (`git subtree`).
+
+---
+
 ### Tech Stack
 
 - **Framework**: Expo + React Native
@@ -57,7 +88,7 @@ For some additional implementation notes, see `PROJECT.md`.
 
 2. **API configuration**
 
-   Account creation and sign-in use the hosted `glimms-api` configured in
+   Account creation and sign-in use the hosted API (`backend/api`) configured in
    `app.json`. To use a local or alternate API, copy `.env.example` to `.env`
    and set `EXPO_PUBLIC_API_URL` and `EXPO_PUBLIC_WS_URL`; environment values
    override `app.json`. A local URL must be reachable by the device. Do not use

@@ -2,9 +2,9 @@
 
 GLIMMS is an Expo + React Native app for personalized styling and outfit suggestions.
 
-## Backend Integration (glimms-api)
+## Backend Integration (`backend/api`)
 
-Implemented per `FRONTEND_INTEGRATION.md` (glimms-api, arena/019ff0c9-glimms-api):
+Implemented per [`backend/api/docs/FRONTEND_INTEGRATION.md`](backend/api/docs/FRONTEND_INTEGRATION.md). The API (formerly the separate `glimms-api` repository) now lives in this repository and stores its data in PostgreSQL on Supabase; the REST/WebSocket contract the app uses is unchanged (ids are now UUIDs, which the app treats as opaque strings):
 
 - **Client** (`services/api.client.ts`): axios against `EXPO_PUBLIC_API_URL` with Bearer attach, `X-Request-Id` propagation, and single-flight 401→refresh with request queueing. Refresh rotates **and persists both tokens** (refresh tokens are single-use server-side). On refresh failure, tokens are cleared and `onAuthFailure` signs the user out.
 - **Auth** (`services/auth.services.ts`, `store/auth.store.ts`): register/login/logout + session hydrate with proactive refresh. Screens: `app/(auth)/login.tsx`, `app/(auth)/register.tsx`, `app/(onboarding)/sign-up.tsx`.

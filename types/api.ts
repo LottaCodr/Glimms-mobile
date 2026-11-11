@@ -1,6 +1,6 @@
 /**
  * API types — mirrors FRONTEND_INTEGRATION.md §15.
- * Backend: glimms-api (Express + Mongoose). All dates are ISO strings.
+ * Backend: backend/api (Express + PostgreSQL on Supabase). All dates are ISO strings.
  */
 
 export type Tier = "free" | "premium" | "pro";
@@ -359,7 +359,7 @@ export type HealthResponse = {
     status: "ok" | "degraded";
     service?: string;
     env?: string;
-    checks?: { mongodb?: string; redis?: string };
+    checks?: { database?: string; redis?: string };
     uptime?: number;
     ts?: string;
 };

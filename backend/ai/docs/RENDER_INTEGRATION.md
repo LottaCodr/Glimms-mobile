@@ -70,7 +70,7 @@ GLIMMS_INTERNAL_TOKEN=<same value as AI_INTERNAL_TOKEN on Render>
 GLIMMS_TIMEOUT_MS=120000
 ```
 
-On the Render service (see [`render.yaml`](../render.yaml) for a blueprint that
+On the Render service (see [`render.yaml`](../../../render.yaml) for a blueprint that
 sets all of this):
 
 ```env
