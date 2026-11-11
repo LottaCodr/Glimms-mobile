@@ -1,4 +1,6 @@
-version: "3.9"
+# Local development stack. In staging/production the database is Supabase
+# (set DATABASE_URL); this Postgres container is only a local stand-in that
+# runs the same migrations from supabase/migrations.
 
 services:
   api:
@@ -8,10 +10,14 @@ services:
       - "4000:4000"
     env_file: .env
     environment:
-      - MONGODB_URI=mongodb://mongo:27017/glimms
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/glimms
+      - DATABASE_SSL=disable
+      # Convenient for a throwaway local database. In deployed environments run
+      # `npm run db:migrate:prod` as a release step instead.
+      - DB_MIGRATE_ON_START=true
       - REDIS_URL=redis://redis:6379
     depends_on:
-      mongo:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -19,34 +25,23 @@ services:
     networks:
       - glimms-net
 
-  mongo:
-    image: mongo:7.0
-    container_name: glimms-mongo
+  postgres:
+    # Same major version as current Supabase projects.
+    image: postgres:17-alpine
+    container_name: glimms-postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=glimms
     ports:
-      - "27017:27017"
+      - "5432:5432"
     volumes:
-      - mongo_data:/data/db
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d glimms"]
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - glimms-net
-
-  mongo-express:
-    image: mongo-express:latest
-    container_name: glimms-mongo-ui
-    ports:
-      - "8082:8081"
-    environment:
-      - ME_CONFIG_MONGODB_SERVER=mongo
-      - ME_CONFIG_BASICAUTH_USERNAME=admin
-      - ME_CONFIG_BASICAUTH_PASSWORD=glimms
-    depends_on:
-      - mongo
-    profiles:
-      - dev-tools
     networks:
       - glimms-net
 
@@ -68,7 +63,7 @@ services:
       - glimms-net
 
 volumes:
-  mongo_data:
+  postgres_data:
   redis_data:
 
 networks:

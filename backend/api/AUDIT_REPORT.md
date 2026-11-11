@@ -1,5 +1,11 @@
 # Glimms API — Implementation Audit (2026-08-11)
 
+> **Historical document.** This audit describes the service when it ran on
+> MongoDB/Mongoose, in its own repository. The data layer has since moved to
+> PostgreSQL on Supabase (see `README.md`), so everything below about Mongoose
+> models, `src/lib/mongoose.ts`, the `mongo` container and the old CI file no
+> longer applies.
+
 > **Branch:** `arena/019ff0c9-glimms-api` (based on `98d5ad4`)
 > **Audited by:** Arena Agent  
 > **Date:** 2026-08-11  

@@ -1,6 +1,6 @@
 # glimms-api
 
-> The Glimms backend — a single **Express.js + MongoDB (Mongoose 9)** server handling all API routing, business logic, authentication, real-time WebSocket events, and the background AI pipeline worker.
+> The Glimms backend — a single **Express.js + PostgreSQL (Supabase)** server handling all API routing, business logic, authentication, real-time WebSocket events, and the background AI pipeline worker.
 
 ---
 
@@ -10,7 +10,7 @@
 |---|---|
 | Runtime | Node.js 20 + TypeScript 5 |
 | Framework | Express.js 4 |
-| Database | **MongoDB 7 via Mongoose 9.1.3** |
+| Database | **PostgreSQL on Supabase**, via `pg` (node-postgres) and plain SQL migrations |
 | Cache / Queue | Redis 7 + BullMQ |
 | Real-time | Socket.IO |
 | Storage | AWS S3 |
@@ -21,15 +21,65 @@
 
 ---
 
-## Why MongoDB + Mongoose?
+## Database: Supabase Postgres
 
-Glimms data has naturally variable shapes — catalog items have different attributes depending on whether they're wardrobe, room, or garden items; design results embed LLM outputs, mockup URLs, and item references that evolve over time. MongoDB's document model handles this cleanly without migration pain.
+The API is the only client of the database. It connects with a normal Postgres
+connection string (`DATABASE_URL`) using `pg`, so the same code runs against
+Supabase, the local Postgres container, and the in-process PGlite used by tests.
 
-Mongoose 9.1.3 specifically:
-- No more deprecated `useNewUrlParser` / `useUnifiedTopology` flags
-- `strictQuery` defaults to `false`
-- TTL indexes handle refresh token expiry automatically
-- `select: false` on `passwordHash` ensures it's never accidentally leaked
+- **Supabase is used as managed Postgres.** Authentication stays in this service
+  (JWT + bcrypt), files stay in S3 and vectors in Pinecone. Supabase Auth,
+  Storage and the auto-generated REST API are not used.
+- **Row Level Security is enabled on every table with no policies**, and the
+  `anon` / `authenticated` roles have no privileges. The Supabase REST API and
+  the public anon key therefore cannot read or write anything; only this
+  service's database role can. Never put the database password in the mobile app.
+- **Relational where the shape is known, `jsonb` where it is not.** Users,
+  tokens, subscriptions and ownership are columns with foreign keys and CHECK
+  constraints; AI output (design results, detected attributes, pipeline steps)
+  is `jsonb`.
+- **Ids are UUIDs.** JSON responses are unchanged: camelCase fields and `id`.
+
+### Migrations
+
+Schema changes are forward-only SQL files in `supabase/migrations/`, named
+`<YYYYMMDDHHMMSS>_<name>.sql` — the Supabase CLI convention, recorded in the
+same `supabase_migrations.schema_migrations` table the CLI uses, so
+`supabase db push` and `npm run db:migrate` agree on what has been applied.
+
+```bash
+npm run db:migrate        # apply pending migrations (uses DATABASE_URL)
+npm run db:migrate:prod   # same, from the compiled build (deploy/release step)
+npm run seed              # dev users + sample data (refuses to run in production)
+```
+
+Each file runs in its own transaction under an advisory lock, so concurrent
+deploys cannot apply the same migration twice. Never edit a migration that has
+been applied anywhere — add a new file. `DB_MIGRATE_ON_START=true` applies
+pending migrations at boot (handy locally; prefer the explicit step in production).
+
+### Pointing at Supabase
+
+1. Create a project, then **Connect → Session pooler** and copy the URI into
+   `DATABASE_URL` (direct connections are IPv6-only without the IPv4 add-on;
+   the transaction pooler on port 6543 is not suitable for running migrations).
+2. `DATABASE_SSL` defaults to `require` for non-local hosts. For full
+   verification set `DATABASE_SSL=verify-full` and `DATABASE_CA_CERT` to the
+   project's CA certificate.
+3. `npm run db:migrate`.
+
+> **Cutting over from the MongoDB version:** there is no data migration script.
+> The schema starts empty, existing users must be re-created or imported
+> separately, and tokens issued before the switch are rejected (users sign in
+> again).
+
+### Code layout
+
+`src/db` holds the connection, transactions, migration runner and error
+helpers; `src/repositories` holds all SQL, one module per table. Services call
+repositories and never write SQL. Repository methods accept an optional
+transaction handle, so several can be combined atomically with
+`getDb().transaction(tx => …)`.
 
 ---
 
@@ -38,15 +88,10 @@ Mongoose 9.1.3 specifically:
 ```
 src/
 ├── config/          — Zod-validated environment config
-├── lib/             — Singleton clients: Mongoose, Redis, S3, BullMQ queues
-├── models/          — All Mongoose schemas and models
-│   ├── User.ts
-│   ├── RefreshToken.ts
-│   ├── UserPreferences.ts
-│   ├── Subscription.ts
-│   ├── CatalogItem.ts
-│   ├── DesignJob.ts
-│   └── SavedDesign.ts  (+ DeviceToken)
+├── db/              — Postgres pool, transactions, migration runner, error helpers
+├── lib/             — Singleton clients: Redis, S3, BullMQ queues
+├── models/          — Entity types (plain TypeScript, no ORM)
+├── repositories/    — All SQL: one repository per table
 ├── middleware/       — Auth, rate limiting, validation, error handling
 ├── routes/          — Express route handlers (thin — delegate to services)
 ├── services/        — All business logic (auth, users, catalog, designs, ...)
@@ -54,6 +99,7 @@ src/
 ├── websocket/       — Socket.IO server: pushes job progress to mobile
 ├── app.ts           — Express app factory
 └── server.ts        — Bootstrap: connect DB → start HTTP + WS + worker
+supabase/migrations/ — SQL schema migrations
 ```
 
 ---
@@ -65,16 +111,14 @@ src/
 ```bash
 cp .env.example .env
 # No other config needed for local dev
-docker-compose up
+docker compose up
 ```
 
-Starts: **glimms-api** on port 4000, **MongoDB** on 27017, **Redis** on 6379.
+Starts: **glimms-api** on port 4000, **Postgres** on 5432, **Redis** on 6379. The
+schema is migrated automatically on boot in this setup.
 
-Optional dev tools (Mongo Express UI):
-```bash
-docker-compose --profile dev-tools up
-# Mongo Express at http://localhost:8082  (admin / glimms)
-```
+To browse the data, point any Postgres client (psql, TablePlus, DBeaver) at
+`postgresql://postgres:postgres@localhost:5432/glimms`.
 
 ### Option B — Local
 
@@ -82,16 +126,20 @@ docker-compose --profile dev-tools up
 cp .env.example .env
 npm install
 
-# Start infra only (MongoDB + Redis) — the API will NOT start without both running
+# Start infra only (Postgres + Redis) — the API will NOT start without both running
 npm run services:up
-# equivalent to: docker compose up -d mongo redis
+# equivalent to: docker compose up -d postgres redis
+
+# Create the schema, and optionally some dev data
+npm run db:migrate
+npm run seed
 
 # Run with hot reload
 npm run dev
 ```
 
-No Docker on your machine? Get MongoDB and Redis some other way before running `npm run dev`:
-- **MongoDB** — install [MongoDB Community Server](https://www.mongodb.com/try/download/community) locally, or use a free Atlas cluster (`MONGODB_URI` in `.env`)
+No Docker on your machine? Get Postgres and Redis some other way before running `npm run dev`:
+- **Postgres** — the simplest route is a free Supabase project (`DATABASE_URL` in `.env`, see [Pointing at Supabase](#pointing-at-supabase)); a locally installed PostgreSQL 15+ works too
 - **Redis** — on Windows use [Memurai](https://www.memurai.com/) or WSL2 (`sudo apt install redis-server && redis-server`); on macOS `brew install redis && brew services start redis`; or a hosted Redis via `REDIS_URL` in `.env`. BullMQ requires the Redis eviction policy to be `noeviction`; for a local server, set it with `redis-cli CONFIG SET maxmemory-policy noeviction` (and persist it in your Redis configuration).
 
 ---
@@ -169,11 +217,11 @@ When a scan is uploaded, the BullMQ worker runs 8 steps in sequence:
 1. Object detection     → glimms-ai :8001  (YOLOv8)
 2. Attribute extraction → glimms-ai :8002  (CLIP + colour + texture)
 3. Embedding upsert     → glimms-ai :8003  (Pinecone — non-blocking)
-4. Catalog save         → MongoDB           (detected items saved)
+4. Catalog save         → Postgres          (detected items saved)
 5. Permutations         → glimms-ai :8004  (combinatorics + filters)
 6. LLM reasoning        → glimms-ai :8005  (GPT-4o / Claude)
 7. Mockup compositor    → glimms-ai :8006  (Pillow + S3)
-8. Complete             → MongoDB + WS push + push notification
+8. Complete             → Postgres + WS push + push notification
 ```
 
 Each step's URL is configurable via `.env`. If an AI service is down, the worker retries up to 3 times with exponential backoff.
@@ -313,18 +361,24 @@ and warns.
 
 ---
 
-## Mongoose Models
+## Tables
 
-| Model | Collection | Key indexes |
-|---|---|---|
-| `User` | `users` | `email` (unique), `tier` |
-| `RefreshToken` | `refreshtokens` | `tokenHash` (unique), TTL on `expiresAt` |
-| `UserPreferences` | `userpreferences` | `userId` (unique) |
-| `Subscription` | `subscriptions` | `userId` (unique), `stripeCustomerId` |
-| `CatalogItem` | `catalogitems` | `userId+vertical`, `userId+isActive` |
-| `DesignJob` | `designjobs` | `userId+status`, `userId+createdAt` |
-| `SavedDesign` | `saveddesigns` | `userId`, `userId+isFavorite` |
-| `DeviceToken` | `devicetokens` | `token` (unique), `userId` |
+Defined in `supabase/migrations/`. All primary keys are `uuid`; every table has
+`created_at`, and mutable ones a trigger-maintained `updated_at`.
+
+| Table | Notable constraints and indexes |
+|---|---|
+| `users` | `email` unique + lowercase, `tier` check |
+| `refresh_tokens` | `token_hash` unique, index on `expires_at` (swept hourly) |
+| `user_preferences` | one row per user |
+| `subscriptions` | one row per user, index on `stripe_customer_id` |
+| `catalog_items` | `(user_id, vertical)`, active items per user, GIN on `tags` |
+| `design_jobs` | `(user_id, status)`, `(user_id, created_at)` |
+| `design_sessions` | `(user_id, created_at)`, `(user_id, status)`; `steps` / `result` are `jsonb` |
+| `saved_designs` | `(user_id, created_at)`; survives deletion of its job/session |
+| `device_tokens` | `token` unique |
+
+Deleting a user cascades to everything they own.
 
 ---
 
@@ -334,7 +388,7 @@ See `.env.example` — all variables are documented inline.
 
 Minimum required for local dev:
 ```
-MONGODB_URI=mongodb://localhost:27017/glimms
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/glimms
 REDIS_URL=redis://localhost:6379
 JWT_SECRET=<32+ chars>
 REFRESH_TOKEN_SECRET=<32+ chars>
@@ -352,4 +406,16 @@ npm test                 # run all tests
 npm run test:watch       # watch mode
 ```
 
-Tests use a real MongoDB instance (the test database is dropped after each run).
+No services are needed: database tests run against **PGlite** (PostgreSQL
+compiled to WebAssembly, in-process), with the real migrations applied to a
+fresh database per test file. Redis and the queue are mocked.
+
+To run the same suite through the production driver against a real server
+(CI does this on every push):
+
+```bash
+TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/glimms_test npm run test:pg
+```
+
+> ⚠️ The harness **drops and recreates the `public` schema** of
+> `TEST_DATABASE_URL`. Only ever point it at a disposable database.

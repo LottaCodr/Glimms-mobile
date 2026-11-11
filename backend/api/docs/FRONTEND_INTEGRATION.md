@@ -1,7 +1,7 @@
 # Glimms Frontend Integration Guide
 > How to implement the frontend (Web + Mobile) against `glimms-api`
 
-**Backend:** `glimms-api` — Express 4 + Mongoose 9 + Redis/BullMQ + Socket.IO + Stripe + Firebase  
+**Backend:** `glimms-api` — Express 4 + PostgreSQL (Supabase) + Redis/BullMQ + Socket.IO + Stripe + Firebase  
 **API Base URL:** `http://localhost:4000` (dev) — `https://api.glimms.ai` (prod)  
 **Last updated:** 2026-08-11 — branch `arena/019ff0c9-glimms-api`
 
@@ -38,7 +38,7 @@
 
 ```
 [Expo Mobile (exp://)] ─┐
-                         ├─► https://api.glimms.ai  ──► MongoDB 7
+                         ├─► https://api.glimms.ai  ──► Postgres (Supabase)
 [Web Dashboard (Next)] ──┘               │
                                          ├─► Redis + BullMQ (queue)
                                          ├─► S3 (images)
@@ -50,7 +50,7 @@
 ```
 
 * Single API server (`src/app.ts`) serves **all** clients. No separate BFF.
-* Auth is **stateless JWT (15m)** + **opaque refresh token (7d, SHA-256 hashed in MongoDB, TTL)**. You store both client-side and rotate on every `refresh`.
+* Auth is **stateless JWT (15m)** + **opaque refresh token (7d, SHA-256 hashed in Postgres, expiring)**. You store both client-side and rotate on every `refresh`.
 * Image-heavy writes go through `multipart/form-data` → S3 → BullMQ job → 6-step AI pipeline → Socket.IO push → `job:complete`.
 * CORS allows `http://localhost:3000` and `exp://*` in dev; prod allowlist via `ALLOWED_ORIGINS`.
 
@@ -91,8 +91,8 @@ origin: (origin, cb) => {
 
 ```http
 GET /health
-# 200 { status:"ok", service:"glimms-api", env:"development", checks:{mongodb:"ok", redis:"ok"}, uptime:123, ts:"..." }
-# 503 { status:"degraded", checks:{mongodb:"ok", redis:"unavailable"} }
+# 200 { status:"ok", service:"glimms-api", env:"development", checks:{database:"ok", redis:"ok"}, uptime:123, ts:"..." }
+# 503 { status:"degraded", checks:{database:"ok", redis:"unavailable"} }
 ```
 
 Use for splash-screen readiness poll. Degraded still serves read paths but scans may queue.
@@ -114,7 +114,7 @@ All validation is Zod; on 400 you get `{ error:"Validation failed", details:[{fi
 
 ### 3.2 Tokens
 
-* `accessToken`: JWT `15m` default (`JWT_EXPIRES_IN` env). Payload `{ sub: userId (ObjectId string), email, tier:"free"|"premium"|"pro" }`, signed with `JWT_SECRET` (min 32 chars).
+* `accessToken`: JWT `15m` default (`JWT_EXPIRES_IN` env). Payload `{ sub: userId (UUID string), email, tier:"free"|"premium"|"pro" }`, signed with `JWT_SECRET` (min 32 chars).
 * `refreshToken`: raw opaque `hex(48 bytes)` = 96-char hex. Stored as `SHA256` in `RefreshToken` collection with `expiresAt` (`7d`) TTL. **Single-use**: each `refresh` deletes old hash and issues new pair. Re-using old `refreshToken` → `401 { code:"UNAUTHORIZED" }`.
 * `expiresIn` is **seconds** until access token expiry (e.g., `900`). Use to schedule proactive refresh.
 
@@ -158,7 +158,7 @@ await SecureStore.deleteItemAsync('refreshToken');
 
 ```ts
 type User = {
-  id: string; // _id → id via toJSON transform
+  id: string; // UUID
   email: string;
   name: string | null;
   avatarUrl: string | null;
@@ -643,7 +643,7 @@ export function useDesignJob(jobId: string) {
 
 | Emitted by client | Payload | Server response |
 |-------------------|---------|-----------------|
-| `subscribe:job` | `jobId: string` (ObjectId) | `subscribed {jobId}` or `error {message}` if invalid/not yours |
+| `subscribe:job` | `jobId: string` (UUID) | `subscribed {jobId}` or `error {message}` if invalid/not yours |
 | `unsubscribe:job` | `jobId` | `unsubscribed {jobId}` |
 
 | Listened by client | Payload |
@@ -1246,7 +1246,7 @@ Frontend should **not** re-implement:
 * BullMQ queue, AI pipeline steps (object detection 8001, attribute 8002, etc) — just poll/WS.
 * Stripe signature verification (`/webhook` needs `express.raw` + `Stripe-Signature` header) — Stripe → backend directly.
 * Rate limiter counters — just display `X-Scan-*` headers; don’t calculate client-side.
-* TTL cleanup for refresh tokens — MongoDB does.
+* Cleanup of expired refresh tokens — the backend does.
 
 ---
 
@@ -1307,7 +1307,7 @@ POST   /api/analytics/track          @optionalAuth { event, properties? } → { 
 GET    /api/analytics/me             @requireAuth → { scansToday, catalogCount, savedCount }
 
 # Health
-GET    /health                       → { status:"ok"|"degraded", checks:{mongodb,redis}, uptime, ts }
+GET    /health                       → { status:"ok"|"degraded", checks:{database,redis}, uptime, ts }
 
 # WebSocket (Socket.IO) — subscribe to legacy jobs *or* v1 sessions (guide §3.4 recommends WS or polling)
 WS     /  (Socket.IO) auth: { token } or header Bearer
