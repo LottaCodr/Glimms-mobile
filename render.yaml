@@ -26,7 +26,9 @@ services:
     buildFilter:
       paths:
         - backend/ai/**
-    plan: starter
+    # The image carries the detection, CLIP and segmentation models. Eight
+    # processes plus those models need ~2 GB; smaller plans are OOM-killed.
+    plan: standard
     healthCheckPath: /livez
     envVars:
       - key: GLIMMS_ENV
@@ -65,8 +67,9 @@ services:
         sync: false
       - key: PINECONE_INDEX
         sync: false
+      # auto = real CLIP from the model baked into the image.
       - key: CLIP_ENABLED
-        value: "true"
+        value: auto
 
   # ── Staging: public URL, token-guarded, fallbacks allowed ────────────────
   - type: web
@@ -78,7 +81,9 @@ services:
     buildFilter:
       paths:
         - backend/ai/**
-    plan: starter
+    # The image carries the detection, CLIP and segmentation models. Eight
+    # processes plus those models need ~2 GB; smaller plans are OOM-killed.
+    plan: standard
     healthCheckPath: /livez
     envVars:
       - key: GLIMMS_ENV

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import threading
@@ -10,6 +11,30 @@ from typing import Any
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+
+#: Pinecone recommends at most ~100 vectors (2 MB) per upsert request.
+PINECONE_UPSERT_BATCH = 100
+
+
+def _pinecone_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    """Coerce metadata to what Pinecone accepts.
+
+    Values must be strings, numbers, booleans or lists of strings; ``None``
+    and nested structures are rejected and would fail the whole batch.
+    """
+
+    cleaned: dict[str, Any] = {}
+    for key, value in metadata.items():
+        if value is None:
+            continue
+        if isinstance(value, (str, bool, int, float)):
+            cleaned[str(key)] = value
+        elif isinstance(value, (list, tuple)) and all(isinstance(entry, str) for entry in value):
+            cleaned[str(key)] = list(value)
+        else:
+            cleaned[str(key)] = json.dumps(value, sort_keys=True, default=str)
+    return cleaned
 
 
 class EmbeddingStore:
@@ -80,13 +105,17 @@ class EmbeddingStore:
 
         remote = self._pinecone_index()
         if remote is not None:
-            remote.upsert(
-                vectors=[
-                    {"id": identifier, "values": vector.tolist(), "metadata": metadata}
-                    for identifier, vector, metadata in prepared
-                ],
-                namespace=namespace,
-            )
+            # Pinecone is the system of record.  Mirroring into process memory
+            # as well would grow without bound and is never read back.
+            for start in range(0, len(prepared), PINECONE_UPSERT_BATCH):
+                remote.upsert(
+                    vectors=[
+                        {"id": identifier, "values": vector.tolist(), "metadata": _pinecone_metadata(metadata)}
+                        for identifier, vector, metadata in prepared[start : start + PINECONE_UPSERT_BATCH]
+                    ],
+                    namespace=namespace,
+                )
+            return [identifier for identifier, _, _ in prepared]
         with self._lock:
             bucket = self._vectors.setdefault(namespace, {})
             for identifier, vector, metadata in prepared:
@@ -121,12 +150,17 @@ class EmbeddingStore:
         namespace = (namespace or self.namespace).strip() or self.namespace
         remote = self._pinecone_index()
         if remote is not None:
-            response = remote.query(
-                vector=vector.tolist(),
-                top_k=top_k,
-                namespace=namespace,
-                include_metadata=True,
-            )
+            query: dict[str, Any] = {
+                "vector": vector.tolist(),
+                "top_k": top_k,
+                "namespace": namespace,
+                "include_metadata": True,
+            }
+            # The filter is how callers scope a search to one user.  It must
+            # reach Pinecone, or every search would span all users' items.
+            if filter_value:
+                query["filter"] = filter_value
+            response = remote.query(**query)
             matches = response.get("matches", []) if isinstance(response, dict) else getattr(response, "matches", [])
             return [self._match_to_dict(match) for match in matches]
 
@@ -148,7 +182,9 @@ class EmbeddingStore:
         namespace = (namespace or self.namespace).strip() or self.namespace
         remote = self._pinecone_index()
         if remote is not None:
+            # Pinecone does not report how many ids existed.
             remote.delete(ids=[str(identifier) for identifier in ids], namespace=namespace)
+            return len(ids)
         deleted = 0
         with self._lock:
             bucket = self._vectors.setdefault(namespace, {})

@@ -56,12 +56,12 @@ _DEGRADED_CHECKS: dict[str, tuple[str, Any, str]] = {
     "object-detection": (
         "model_loaded",
         False,
-        "no YOLO model is mounted; detections are deterministic prototypes",
+        "no detection model is loaded; detections are deterministic prototypes",
     ),
     "attribute-extractor": (
         "clip_enabled",
         False,
-        "CLIP is disabled; embeddings are deterministic offline vectors",
+        "no CLIP model is loaded; embeddings are deterministic offline vectors",
     ),
     "embedding-engine": (
         "backend",
@@ -142,9 +142,8 @@ _INDEX_HTML = """<!doctype html>
   <a href="/readyz"><code>/readyz</code></a>. Liveness:
   <a href="/livez"><code>/livez</code></a>. Machine-readable index:
   <a href="/index.json"><code>/index.json</code></a>.
-  This lightweight image runs deterministic offline fallbacks (no torch,
-  CLIP, YOLO, rembg or Pinecone); build the per-service images with
-  <code>docker compose build</code> for full integrations.</p>
+  <code>/health</code> lists any service that is answering with a
+  development fallback instead of a real model or provider.</p>
 
   <p class="sub">Service endpoints require
   <code>Authorization: Bearer $AI_INTERNAL_TOKEN</code> whenever that variable

@@ -35,7 +35,7 @@ def health():
         "status": "ok",
         "service": "object-detection",
         "port": int(os.getenv("PORT", "8001")),
-        "model_loaded": bool(detector and detector.model is not None),
+        **(detector.describe() if detector else {"model_loaded": False}),
         "dev_fallbacks_allowed": allow_dev_fallbacks(),
         **s3.health(),
     }

@@ -8,7 +8,7 @@ from shared import s3
 from shared.runtime import allow_dev_fallbacks
 from shared.auth import install_service_auth
 
-from .router import router
+from .router import clip, router
 
 app = FastAPI(title="Glimms — Attribute Extractor", version="1.1.0")
 app.include_router(router)
@@ -21,7 +21,7 @@ def health():
         "status": "ok",
         "service": "attribute-extractor",
         "port": int(os.getenv("PORT", "8002")),
-        "clip_enabled": os.getenv("CLIP_ENABLED", "false").lower() in {"1", "true", "yes", "on"},
+        **clip.describe(),
         "dev_fallbacks_allowed": allow_dev_fallbacks(),
         **s3.health(),
     }

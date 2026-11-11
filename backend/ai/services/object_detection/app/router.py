@@ -30,7 +30,7 @@ async def detect(request: Request, body: DetectionRequest) -> DetectionResponse:
             "object-detection",
             degraded=detector.model is None,
             reason="no detection model is loaded; results would be prototypes",
-            remedy="mount a YOLOv8 ONNX model and set MODEL_PATH/MODEL_LABELS",
+            remedy="deploy the image built with models (scripts/build_models.py) or set MODEL_PATH/MODEL_LABELS",
         )
     except DevFallbackBlocked as exc:
         raise HTTPException(status_code=503, detail=exc.detail()) from exc

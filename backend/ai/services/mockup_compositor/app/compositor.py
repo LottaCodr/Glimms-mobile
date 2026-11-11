@@ -6,7 +6,86 @@ import io
 import math
 from typing import Any
 
+import logging
+import threading
+
+import numpy as np
 from PIL import Image, ImageColor, ImageOps
+
+from shared.images import crop_to_bbox, open_oriented
+from shared.models import resolve_model
+
+logger = logging.getLogger(__name__)
+
+#: U^2-Net salient-object segmentation: 320x320 input, ImageNet statistics.
+SEGMENTER_INPUT_SIZE = 320
+SEGMENTER_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+SEGMENTER_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+
+
+class BackgroundRemover:
+    """Cut an object out of its background with a U^2-Net ONNX model.
+
+    The model is baked into the production image (``scripts/build_models.py``)
+    and loaded on first use.  When it is absent, ``available`` is false and
+    callers keep the original pixels.
+    """
+
+    def __init__(self) -> None:
+        self._session: Any | None = None
+        self._attempted = False
+        self._lock = threading.Lock()
+
+    @property
+    def available(self) -> bool:
+        return self._load() is not None
+
+    def _load(self) -> Any | None:
+        with self._lock:
+            if self._attempted:
+                return self._session
+            self._attempted = True
+            path = resolve_model("BACKGROUND_MODEL_PATH", "background.onnx")
+            if path is None:
+                logger.info("No background-removal model found; cutouts are disabled")
+                return None
+            try:
+                import onnxruntime as ort
+
+                self._session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
+                logger.info("Background-removal model loaded: %s", path)
+            except Exception as exc:  # noqa: BLE001 - optional enhancement must be fail-open
+                logger.warning("Background-removal model could not be loaded: %s", exc)
+                self._session = None
+            return self._session
+
+    def remove(self, image: Image.Image) -> Image.Image:
+        session = self._load()
+        if session is None:
+            return image
+        rgb = image.convert("RGB")
+        resized = rgb.resize((SEGMENTER_INPUT_SIZE, SEGMENTER_INPUT_SIZE), Image.Resampling.LANCZOS)
+        pixels = np.asarray(resized, dtype=np.float32)
+        pixels = pixels / max(float(pixels.max()), 1e-6)
+        tensor = ((pixels - SEGMENTER_MEAN) / SEGMENTER_STD).transpose(2, 0, 1)[np.newaxis, ...]
+        prediction = np.asarray(session.run(None, {session.get_inputs()[0].name: tensor.astype(np.float32)})[0])
+        mask = prediction.reshape(prediction.shape[-2], prediction.shape[-1])
+        low, high = float(mask.min()), float(mask.max())
+        if not np.isfinite(low) or not np.isfinite(high) or high - low < 1e-6:
+            return image  # the model found nothing to separate
+        mask = (mask - low) / (high - low)
+        alpha = Image.fromarray((mask * 255).astype(np.uint8), mode="L").resize(rgb.size, Image.Resampling.LANCZOS)
+        # Respect transparency the source already had.
+        if image.mode == "RGBA":
+            alpha = Image.fromarray(
+                np.minimum(np.asarray(alpha), np.asarray(image.getchannel("A"))).astype(np.uint8), mode="L"
+            )
+        cutout = rgb.convert("RGBA")
+        cutout.putalpha(alpha)
+        return cutout
+
+
+background_remover = BackgroundRemover()
 
 
 class Compositor:
@@ -36,8 +115,9 @@ class Compositor:
         cell_height = max(1, height // cell_rows)
 
         for index, (layer, data) in enumerate(layers):
-            with Image.open(io.BytesIO(data)) as source:
-                image = source.convert("RGBA")
+            # ``crop`` is a region of the *source* photo (a detection box);
+            # ``bbox``/``position`` say where the layer goes on the canvas.
+            image = crop_to_bbox(open_oriented(data), layer.get("crop")).convert("RGBA")
             if remove_background:
                 image = self._remove_background(image)
 
@@ -101,13 +181,10 @@ class Compositor:
 
     @staticmethod
     def _remove_background(image: Image.Image) -> Image.Image:
+        # Background removal is an enhancement: a regular image is preferable
+        # to making the entire composition unavailable.
         try:
-            from rembg import remove
-
-            output = remove(image)
-            return output.convert("RGBA") if isinstance(output, Image.Image) else Image.open(io.BytesIO(output)).convert("RGBA")
-        except Exception:  # noqa: BLE001 - optional enhancement must be fail-open
-            # Background removal is optional.  A regular image is preferable
-            # to making the entire composition unavailable if its model is not
-            # installed or downloaded.
+            return background_remover.remove(image)
+        except Exception as exc:  # noqa: BLE001 - fail open
+            logger.warning("Background removal failed: %s", exc)
             return image

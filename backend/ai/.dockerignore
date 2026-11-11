@@ -6,8 +6,5 @@ venv
 __pycache__
 *.pyc
 .pytest_cache
-models/*.pt
-models/*.onnx
-# Keep optional service-local ONNX weights available to the detector image.
-!services/object_detection/models/
-!services/object_detection/models/*.onnx
+# Locally built model artefacts; the image builds its own.
+models/

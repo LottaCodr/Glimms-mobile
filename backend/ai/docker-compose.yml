@@ -6,6 +6,14 @@ version: "3.9"
 # Ports are published on 127.0.0.1 only, so a development machine on a shared
 # network does not expose eight unauthenticated services. Set AI_INTERNAL_TOKEN
 # in .env to require a bearer token as well (mandatory when GLIMMS_ENV=production).
+#
+# Models: the vision services read ./models (mounted read-only). Build it once
+# with the same tooling the production image uses:
+#
+#   docker build --target models -t glimms-ai-models .
+#   docker run --rm -v "$PWD/models:/out" glimms-ai-models cp -r /models/. /out/
+#
+# Without it they answer with development fallbacks.
 
 services:
   object-detection:
@@ -14,7 +22,8 @@ services:
       dockerfile: services/object_detection/Dockerfile
     ports: ["127.0.0.1:8001:8001"]
     env_file: .env
-    environment: [PORT=8001]
+    environment: [PORT=8001, MODELS_DIR=/app/models]
+    volumes: ["./models:/app/models:ro"]
     restart: unless-stopped
 
   attribute-extractor:
@@ -23,7 +32,8 @@ services:
       dockerfile: services/attribute_extractor/Dockerfile
     ports: ["127.0.0.1:8002:8002"]
     env_file: .env
-    environment: [PORT=8002]
+    environment: [PORT=8002, MODELS_DIR=/app/models]
+    volumes: ["./models:/app/models:ro"]
     restart: unless-stopped
 
   embedding-engine:
@@ -59,7 +69,8 @@ services:
       dockerfile: services/mockup_compositor/Dockerfile
     ports: ["127.0.0.1:8006:8006"]
     env_file: .env
-    environment: [PORT=8006]
+    environment: [PORT=8006, MODELS_DIR=/app/models]
+    volumes: ["./models:/app/models:ro"]
     restart: unless-stopped
 
   quality-guard:

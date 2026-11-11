@@ -1,0 +1,14 @@
+# Build-time only: used by the `models` stage of the root Dockerfile to export
+# the ONNX artefacts (scripts/build_models.py).  None of this is installed in
+# the runtime image.  torch/torchvision come from the CPU wheel index — see the
+# Dockerfile.
+torch==2.2.2
+torchvision==0.17.2
+ultralytics==8.3.40
+onnx==1.15.0
+onnxruntime==1.17.0
+numpy==1.26.3
+Pillow==10.2.0
+# OpenAI CLIP (text tower for the detector vocabulary, image tower for
+# embeddings), pinned to a commit of the Ultralytics-maintained fork.
+clip @ git+https://github.com/ultralytics/CLIP.git@7ffa84b3bfa40c42ecc1c77147a855e69cb2dd40

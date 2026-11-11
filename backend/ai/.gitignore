@@ -4,8 +4,12 @@ __pycache__/
 .env
 .venv/
 venv/
-models/*.onnx
-models/*.pt
+# Model artefacts are built (scripts/build_models.py), never committed.
+models/*
+!models/.gitkeep
+*.onnx
+*.pt
+*.npz
 *.egg-info/
 dist/
 .DS_Store

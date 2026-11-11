@@ -75,40 +75,91 @@ cp .env.example .env
 docker compose up --build
 ```
 
-The Pinecone and model integrations are optional during local development:
+## Models
 
-- Empty Pinecone credentials select an in-memory vector store. It is not
-  durable and should not be used for production.
-- `CLIP_ENABLED=false` avoids downloading a large transformer at startup. Set
-  it to `true` (and optionally `CLIP_LOCAL_ONLY=true`) for real CLIP features.
-- Place or mount a domain-specific YOLOv8 ONNX model at
-  `services/object_detection/models/yolov8n.onnx`, then set `MODEL_PATH` plus
-  its comma-separated `MODEL_LABELS` for real object detections. The detector
-  image copies that optional directory. Without a model, `/detect` returns
-  stable prototype detections so the rest of the pipeline can be exercised,
-  but those results are not production detections.
+The vision services run real models through **onnxruntime**. The ONNX files
+are produced by [`scripts/build_models.py`](scripts/build_models.py) — at image
+build time for the production image — and read from `MODELS_DIR`
+(default `./models`):
+
+| File | Used by | What it is |
+|---|---|---|
+| `detector.onnx`, `detector.labels.txt` | object-detection | **YOLO-World** (open vocabulary, `yolov8s-worldv2`) with the Glimms vocabulary — every wardrobe, room and garden label — baked in. One model covers all three verticals without a per-domain training set. |
+| `clip_visual.onnx` | attribute-extractor | **OpenAI CLIP ViT-B/32** image tower. 512-d, L2-normalised; the same space as `openai/clip-vit-base-patch32`. |
+| `clip_style_tags.npz` | attribute-extractor | Text embeddings of the style tags from the matching text tower, so zero-shot style tagging needs no text model at runtime. |
+| `background.onnx` | mockup-compositor | **U²-Net** salient-object segmentation for item cut-outs. |
+| `manifest.json` | all | Sources, checksums, label list, recommended detection threshold. |
+
+PyTorch, ultralytics and CLIP are needed only to *export* these
+(`requirements-models.txt`); nothing in `requirements.txt` depends on them.
+The build script loads every artefact back and checks it (output shapes; CLIP
+against the PyTorch reference) and fails otherwise.
+
+How each item is processed:
+
+1. **Detection** letterboxes the EXIF-oriented photo, runs the detector, keeps
+   labels of the requested vertical, and removes duplicates (per-label NMS,
+   then near-identical boxes with different labels such as *pants*/*jeans*).
+2. **Attributes** are computed on **each item's detection box**, not the whole
+   photo — embedding, palette, texture and style tags describe that item.
+3. **Mockups** place each layer's `crop` region (the detection box) on the
+   canvas; with `remove_background: true` the item is cut out first.
+
+Without models (a plain checkout, or an image built with
+`--build-arg WITH_MODELS=false`) the services answer with deterministic
+development fallbacks: prototype boxes, placeholder vectors, no cut-outs.
+`/health` reports this (`model_loaded`, `clip_enabled`, `background_removal`),
+and with `GLIMMS_ENV=production` the affected endpoints return `503` rather
+than a fake result.
+
+To get models for local development or `docker compose`:
+
+```bash
+docker build --target models -t glimms-ai-models .
+docker run --rm -v "$PWD/models:/out" glimms-ai-models cp -r /models/. /out/
+```
+
+Tuning and overrides (see `.env.example`): `CONFIDENCE_THRESHOLD` (default
+from the manifest, 0.25), `NMS_IOU_THRESHOLD`, `CROSS_CLASS_IOU_THRESHOLD`,
+`MODEL_PATH` + `MODEL_LABELS` to swap in any YOLOv8-layout ONNX model (for
+example one fine-tuned on your own catalogue), `CLIP_MODEL_PATH`,
+`BACKGROUND_MODEL_PATH`.
+
+> **Know the limits.** YOLO-World is a zero-shot detector: it is real
+> detection and a sound starting point, but a model fine-tuned on fashion /
+> interior data will be more accurate, and the 0.25 threshold has not been
+> tuned against Glimms photos. Evaluate on real uploads before launch.
+
+Still configured through credentials rather than files:
+
+- **Pinecone** — set `PINECONE_API_KEY` and `PINECONE_INDEX`. Create the index
+  with **dimension 512, metric cosine**. Without them the embedding engine
+  uses a non-durable in-memory store (refused in production). Search filters
+  (for example `{"user_id": …}`) are passed through to Pinecone.
+- **LLM** — set `OPENAI_API_KEY` and/or `ANTHROPIC_API_KEY`.
 - Set `S3_ENDPOINT_URL` when using an S3-compatible local service such as
   MinIO.
 
 ## Run everything in one container
 
-The repository-root `Dockerfile` builds a lightweight all-in-one image for
-single-container deployments. It starts all eight services inside one
-container plus a gateway that exposes them on a single port:
+The `Dockerfile` in this directory builds the all-in-one production image: all
+eight services, a gateway exposing them on a single port, and the models.
 
 ```bash
-docker build -t glimms-all-in-one .
-docker run --rm -p 8080:8080 --env-file .env glimms-all-in-one
+docker build -t glimms-ai .                                   # with models
+docker build --build-arg WITH_MODELS=false -t glimms-ai:lite . # fallbacks only
+docker run --rm -p 8080:8080 --env-file .env glimms-ai
 ```
+
+The first build downloads the model weights and CPU PyTorch into a throwaway
+stage (several minutes); the runtime stage contains only onnxruntime and the
+exported models. Give the container **at least 2 GB of memory**.
 
 The gateway listens on `$PORT` (default 8080). Route any request through a
 `/<service-name>/` prefix and it is passed to that service unchanged, for
 example `POST /permutation-engine/generate`, `GET /quality-guard/health`, or
 `/llm-reasoning/docs`. `GET /health` returns the aggregated status of all
-eight services. The all-in-one image intentionally omits the heavyweight
-model dependencies (torch, CLIP, YOLO, rembg, Pinecone), so it runs the same
-deterministic offline fallbacks described above; build the per-service images
-with `docker compose up --build` for the real integrations.
+eight services. `GET /readyz` succeeds only when nothing is answering with a fallback.
 
 ## Start one service
 
@@ -195,8 +246,9 @@ python -m compileall -q services shared
 
 These are intentionally kept separate from the working baseline:
 
-1. **Production model packaging:** mount/version a domain-trained YOLO model,
-   CLIP model, and model metadata; add warm-up and GPU/provider selection.
+1. **Domain-tuned detection:** the shipped detector is zero-shot YOLO-World.
+   Fine-tune on Glimms data, evaluate against a labelled set, tune the
+   threshold; add warm-up and GPU/provider selection.
 2. **Real quality scoring:** add a calibrated BRISQUE/NIQE model and a labelled
    acceptance set instead of hand-tuned blur/exposure thresholds.
 3. **Durable vector operations:** create/migrate Pinecone indexes, add metadata

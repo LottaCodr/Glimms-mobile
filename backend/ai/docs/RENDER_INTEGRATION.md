@@ -106,33 +106,35 @@ Client rules that matter on Render's free/shared tier:
 
 ## 4. Read the health payload before trusting results
 
-The live deployment currently reports:
+`GET /health` on the gateway reports, per service, whether a real integration
+or a development fallback is answering. A deployment of an image built
+**without** models and with no credentials looks like this:
 
 ```json
 {"object-detection":   {"model_loaded": false},
- "attribute-extractor":{"clip_enabled": false},
+ "attribute-extractor":{"clip_enabled": false, "clip_backend": "fallback"},
  "embedding-engine":   {"backend": "memory", "pinecone_configured": false},
- "llm-reasoning":      {"providers_configured": ["free-fallback"],
-                        "free_fallback_providers": ["text.pollinations.ai"]}}
+ "llm-reasoning":      {"providers_configured": ["free-fallback"]}}
 ```
 
 Translated:
 
-- **Detections are deterministic prototypes, not real detections.** The
-  all-in-one image intentionally omits torch/YOLO/CLIP/rembg/Pinecone.
-- **Attributes are offline pseudo-embeddings**, not CLIP vectors — they are
-  stable and comparable to each other, but meaningless against real CLIP space.
-- **The vector store is in-process memory.** It is wiped on every deploy,
-  restart, and Render idle-spindown, and it is not shared between instances.
-  Do not use it as a system of record; keep vectors in your own store (or
-  Pinecone/pgvector) and treat the engine as a cache.
-- **LLM output comes from a keyless free provider** (Pollinations), which is
-  rate-limited and unsuitable for production load.
+- **`model_loaded: false`** — detections are deterministic prototypes.
+- **`clip_enabled: false`** — attributes are placeholder vectors, stable but
+  meaningless against real CLIP space. Never index them next to real ones.
+- **`backend: "memory"`** — vectors live in process memory: wiped on every
+  deploy and restart, not shared between instances.
+- **`free-fallback`** — LLM output comes from a keyless, rate-limited provider.
 
-So this deployment is a good **integration/staging target**: it lets you build
-and test the whole backend contract end to end today. Before it serves real
-users, either set the real provider keys and mount the models, or deploy the
-per-service images from `docker-compose.yml`.
+The image built from this repository (`render.yaml`) carries the detection,
+CLIP and segmentation models, so the first two read `true` out of the box.
+The other two are credentials you must set: `PINECONE_API_KEY` +
+`PINECONE_INDEX` (index: 512 dimensions, cosine) and `OPENAI_API_KEY` or
+`ANTHROPIC_API_KEY`. `GET /readyz` returns 200 only when none of the four is
+degraded, and with `GLIMMS_ENV=production` a degraded service answers `503`
+instead of serving a fallback.
+
+The models need memory: use a Render plan with **2 GB or more** (`standard`).
 
 You no longer have to detect this by hand. The deployment enforces it:
 

@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from shared.runtime import DevFallbackBlocked, guard_dev_fallback
+from shared.images import crop_to_bbox, open_oriented, parse_bbox, to_png_bytes
 from shared.s3 import fetch_image_bytes
 
 from .clip_extractor import CLIPExtractor
@@ -38,6 +39,20 @@ class ExtractionResponse(BaseModel):
     errors: list[ExtractionError] = Field(default_factory=list)
 
 
+def _item_pixels(image_bytes: bytes, bbox: object) -> bytes:
+    """The pixels that describe one item.
+
+    Several items are usually detected in the same photo.  Describing each by
+    the whole photo would give them identical embeddings, colours and
+    textures, so crop to the item's detection box when there is one.  A small
+    margin keeps a little context around the object.
+    """
+
+    if parse_bbox(bbox) is None:
+        return image_bytes
+    return to_png_bytes(crop_to_bbox(open_oriented(image_bytes), bbox, margin=0.04))
+
+
 @router.post("/extract", response_model=ExtractionResponse)
 async def extract(body: ExtractionRequest) -> ExtractionResponse:
     # Offline vectors are stable and mutually comparable, but they are not
@@ -45,9 +60,11 @@ async def extract(body: ExtractionRequest) -> ExtractionResponse:
     try:
         guard_dev_fallback(
             "attribute-extractor",
-            degraded=not clip.enabled,
-            reason="CLIP is disabled; embeddings would be deterministic placeholders",
-            remedy="set CLIP_ENABLED=true and install the transformer dependencies",
+            # Readiness, not the CLIP_ENABLED flag: a flag that is on while the
+            # model failed to load would otherwise index placeholders as real.
+            degraded=not clip.ready(),
+            reason="no CLIP model is loaded; embeddings would be deterministic placeholders",
+            remedy="deploy the image built with models (scripts/build_models.py) or set CLIP_MODEL_PATH",
         )
     except DevFallbackBlocked as exc:
         raise HTTPException(status_code=503, detail=exc.detail()) from exc
@@ -59,7 +76,7 @@ async def extract(body: ExtractionRequest) -> ExtractionResponse:
         try:
             if not isinstance(key, str) or not key.strip():
                 raise ValueError("image_key is required")
-            image_bytes = fetch_image_bytes(key)
+            image_bytes = _item_pixels(fetch_image_bytes(key), item.get("bbox"))
             embedding = clip.embed(image_bytes)
             color_info = color.extract(image_bytes)
             texture_info = texture.extract(image_bytes)

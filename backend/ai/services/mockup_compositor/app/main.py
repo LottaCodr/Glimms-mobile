@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from shared import s3
 from shared.auth import install_service_auth
 
+from .compositor import background_remover
 from .router import router
 
 app = FastAPI(title="Glimms — Mockup Compositor", version="1.1.0")
@@ -21,6 +22,7 @@ def health():
         "service": "mockup-compositor",
         "port": int(os.getenv("PORT", "8006")),
         "backend": "pillow",
+        "background_removal": background_remover.available,
         **s3.health(),
     }
 
