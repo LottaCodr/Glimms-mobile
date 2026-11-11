@@ -1,6 +1,8 @@
 import crypto from 'crypto';
-import { Types } from 'mongoose';
-import { DesignSession } from '../models/DesignSession';
+import { designSessionsRepository, usersRepository } from '../repositories';
+import type { DesignSessionPatch } from '../repositories/designSessions.repository';
+import type { DesignSession, SessionStatus, SourceImage, StepStatus } from '../models';
+import { isUuid } from '../utils/uuid';
 import { NotFoundError, ForbiddenError, BadRequestError } from '../middleware/errorHandler.middleware';
 import { getPresignedUploadUrl, headObject, verifyObjectOwnership, isAllowedImageType, MAX_IMAGE_BYTES } from '../lib/s3';
 import { enqueueDesignJob } from '../lib/queue';
@@ -8,6 +10,34 @@ import { logger } from '../lib/logger';
 import { config } from '../config';
 
 const PIPELINE_VERSION = '1.0.0';
+
+/** Progress (0–100) a session has reached once the given step completes. */
+const STEP_PROGRESS: Record<string, number> = {
+  quality: 10, detection: 25, attributes: 40, context: 45, permutations: 55, embeddings: 60, reasoning: 75, mockups: 90,
+};
+
+/** Session status shown to polling clients while a step runs (guide §3.4). */
+const RUNNING_STEP_STATUS: Record<string, SessionStatus> = {
+  quality: 'quality_review', detection: 'detecting', attributes: 'extracting',
+  context: 'detecting', permutations: 'permuting', embeddings: 'embedding',
+  reasoning: 'reasoning', mockups: 'composing',
+};
+
+export interface StepExtras {
+  inferredContext?: Record<string, unknown>;
+  warnings?:        string[];
+  designs?:         Record<string, unknown>[];
+  artifacts?:       DesignSession['artifacts'];
+  error?:           DesignSession['error'];
+}
+
+async function findOwnedSession(sessionId: string, userId: string, forbiddenMessage?: string): Promise<DesignSession> {
+  if (!isUuid(sessionId)) throw new NotFoundError('Design session');
+  const session = await designSessionsRepository.findById(sessionId);
+  if (!session) throw new NotFoundError('Design session');
+  if (session.userId !== userId) throw new ForbiddenError(forbiddenMessage);
+  return session;
+}
 
 // Helper to build opaque IDs like ds_01J..., img_01J...
 function opaqueId(prefix: string) {
@@ -31,13 +61,14 @@ export const designSessionsService = {
     if (!['wardrobe','room','garden'].includes(vertical)) throw new BadRequestError('Invalid vertical');
 
     const correlationId = `cor_${crypto.randomBytes(8).toString('hex')}`;
-    const sessionId = new Types.ObjectId();
+    // Generated here rather than by the database: the S3 object keys embed it.
+    const sessionId = crypto.randomUUID();
     const imageCount = Math.min(Math.max(input.imageCount ?? 1, 1), 5);
 
-    const sourceImages = await Promise.all(
+    const sourceImages: SourceImage[] = await Promise.all(
       Array.from({ length: imageCount }).map(async () => {
         const imageId = opaqueId('img');
-        const objectKey = `users/${userId}/sessions/${sessionId.toString()}/images/${imageId}/source.png`;
+        const objectKey = `users/${userId}/sessions/${sessionId}/images/${imageId}/source.png`;
         // Default to png, client can PUT jpeg/png/webp — presigned URL will validate Content-Type if enforced by bucket policy
         // For guide compliance, we issue one per image with 15m expiry
         const { url, expiresAt } = await getPresignedUploadUrl(objectKey, 'image/png', 900).catch(() => {
@@ -45,17 +76,16 @@ export const designSessionsService = {
           // so local dev without AWS still works (the complete step will skip HeadObject)
           return { url: `https://fake-s3/${objectKey}?presigned=dev`, expiresAt: new Date(Date.now()+900_000) };
         });
-        return { imageId, objectKey, uploadUrl: url, expiresAt, qualityStatus: 'pending' as const };
+        return { imageId, objectKey, uploadUrl: url, expiresAt: expiresAt.toISOString(), qualityStatus: 'pending' as const };
       })
     );
 
-    const session = await DesignSession.create({
-      _id: sessionId,
+    const session = await designSessionsRepository.create({
+      id: sessionId,
       userId,
       vertical,
       status: 'created',
       progress: 5,
-      steps: { quality:'pending', detection:'pending', attributes:'pending', context:'pending', permutations:'pending', embeddings:'pending', reasoning:'pending', mockups:'pending' },
       inputContext: {
         vertical,
         occasion: input.occasion,
@@ -63,71 +93,61 @@ export const designSessionsService = {
         climate: input.climate,
         preferences: input.preferences,
       },
-      inferredContext: null,
       sourceImages,
       pipelineVersion: PIPELINE_VERSION,
       correlationId,
-      warnings: [],
-      designs: [],
-      artifacts: [],
     });
 
-    logger.info({ sessionId: session._id, userId, vertical, correlationId }, 'Design session created');
+    logger.info({ sessionId: session.id, userId, vertical, correlationId }, 'Design session created');
 
     return {
-      session_id: session._id.toString(),
+      session_id: session.id,
       status: session.status,
       upload_urls: sourceImages.map(s => ({
         image_id: s.imageId,
         object_key: s.objectKey,
         upload_url: s.uploadUrl,
-        expires_at: s.expiresAt?.toISOString(),
+        expires_at: s.expiresAt,
       })),
       correlationId,
     };
   },
 
   async getSession(sessionId: string, userId: string) {
-    if (!Types.ObjectId.isValid(sessionId)) throw new NotFoundError('Design session');
-    const session = await DesignSession.findById(sessionId);
-    if (!session) throw new NotFoundError('Design session');
-    if (session.userId.toString() !== userId) throw new ForbiddenError('You do not own this session');
-
+    const session = await findOwnedSession(sessionId, userId, 'You do not own this session');
     // Map to guide §3.4 status model
-    const steps = session.steps instanceof Map ? Object.fromEntries(session.steps as any) : (session.steps as any);
     return {
-      session_id: session._id.toString(),
+      session_id: session.id,
       status: session.status,
       vertical: session.vertical,
       progress: session.progress,
-      steps,
+      steps: session.steps,
       designs: session.designs,
       warnings: session.warnings,
       artifacts: session.artifacts,
       sourceImages: session.sourceImages.map(s => ({ image_id: s.imageId, object_key: s.objectKey, qualityStatus: s.qualityStatus, width: s.width, height: s.height })),
       error: session.error ?? null,
       correlationId: session.correlationId,
-      createdAt: (session as any).createdAt,
-      updatedAt: (session as any).updatedAt,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
     };
   },
 
   async listSessions(userId: string, opts: { page:number; limit:number } = { page:1, limit:20 }) {
     const { page, limit } = opts;
-    const skip = (page-1)*limit;
     const [sessions, total] = await Promise.all([
-      DesignSession.find({ userId } as any).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-      DesignSession.countDocuments({ userId } as any),
+      designSessionsRepository.listSummariesByUser(userId, { page, limit }),
+      designSessionsRepository.countByUser(userId),
     ]);
     return {
       sessions: sessions.map(s => ({
-        session_id: s._id.toString(),
+        session_id: s.id,
         status: s.status,
         vertical: s.vertical,
         progress: s.progress,
-        createdAt: (s as any).createdAt,
-        imageCount: (s.sourceImages as any[])?.length ?? 0,
-        designCount: (s.designs as any[])?.length ?? 0,
+        createdAt: s.createdAt,
+        imageCount: s.imageCount,
+        designCount: s.designCount,
       })),
       total, page, limit, totalPages: Math.ceil(total/limit),
     };
@@ -135,10 +155,7 @@ export const designSessionsService = {
 
   // POST /v1/design-sessions/:id/images/complete — verify uploads and enqueue
   async completeImages(sessionId: string, userId: string, imageIds: string[]) {
-    if (!Types.ObjectId.isValid(sessionId)) throw new NotFoundError('Design session');
-    const session = await DesignSession.findById(sessionId);
-    if (!session) throw new NotFoundError('Design session');
-    if (session.userId.toString() !== userId) throw new ForbiddenError();
+    const session = await findOwnedSession(sessionId, userId);
     if (!['created','uploading'].includes(session.status)) {
       throw new BadRequestError(`Session is ${session.status}, cannot complete images`);
     }
@@ -190,12 +207,10 @@ export const designSessionsService = {
     }
 
     // Persist verified metadata and move to queued
-    await DesignSession.findByIdAndUpdate(sessionId, {
-      $set: {
-        status: 'queued',
-        progress: 10,
-        sourceImages: session.sourceImages,
-      }
+    await designSessionsRepository.update(sessionId, {
+      status: 'queued',
+      progress: 10,
+      sourceImages: session.sourceImages,
     });
 
     // Enqueue design.analysis.requested — reuse existing queue but with sessionId
@@ -214,8 +229,7 @@ export const designSessionsService = {
 
     // Lookup tier from User for priority
     try {
-      const { User } = await import('../models');
-      const user = await User.findById(userId).select('tier');
+      const user = await usersRepository.findById(userId);
       if (user) (jobData as any).tier = user.tier;
     } catch {}
 
@@ -232,41 +246,41 @@ export const designSessionsService = {
   },
 
   async cancelSession(sessionId: string, userId: string) {
-    await this.getSession(sessionId, userId); // verify ownership
-    await DesignSession.findByIdAndUpdate(sessionId, { $set: { status: 'cancelled', progress: 0 } });
+    await findOwnedSession(sessionId, userId, 'You do not own this session');
+    await designSessionsRepository.update(sessionId, { status: 'cancelled', progress: 0 });
     return { session_id: sessionId, status: 'cancelled' };
   },
 
-  // Internal: update step status + progress (called by worker)
-  async updateStep(sessionId: string, step: string, status: 'pending'|'running'|'completed'|'failed'|'skipped', extra: any = {}) {
-    const session = await DesignSession.findById(sessionId);
-    if (!session) return;
-    const steps = session.steps instanceof Map ? Object.fromEntries(session.steps as any) : { ...(session.steps as any) };
-    steps[step] = status;
-    const progressMap: Record<string, number> = {
-      quality: 10, detection: 25, attributes: 40, context: 45, permutations: 55, embeddings: 60, reasoning: 75, mockups: 90, completed: 100
-    };
-    let progress = session.progress;
-    if (status === 'completed' && progressMap[step]) progress = Math.max(progress, progressMap[step]);
-    if (status === 'running' && progressMap[step]) progress = Math.max(progress, progressMap[step]-5);
+  /**
+   * Internal (worker): records a pipeline step's status, advances progress and
+   * the client-facing session status. Returns the updated session, or null if
+   * the session no longer exists.
+   */
+  async updateStep(sessionId: string, step: string, status: StepStatus, extra: StepExtras = {}): Promise<DesignSession | null> {
+    const session = await designSessionsRepository.findById(sessionId);
+    if (!session) return null;
 
-    const update: any = { steps, progress };
-    if (extra.inferredContext) update.inferredContext = extra.inferredContext;
-    if (extra.warnings) update.warnings = extra.warnings;
-    if (extra.designs) update.designs = extra.designs;
-    if (extra.artifacts) update.artifacts = extra.artifacts;
-    if (extra.error) { update.error = extra.error; update.status = 'failed'; }
-    if (step === 'mockups' && status === 'completed') { update.status = 'completed'; update.completedAt = new Date(); update.progress = 100; }
-    else if (status === 'running') {
-      // Map step to session status for polling UI per guide §3.4
-      const statusMap: Record<string, string> = {
-        quality: 'quality_review', detection: 'detecting', attributes: 'extracting',
-        context: 'detecting', permutations: 'permuting', embeddings: 'embedding',
-        reasoning: 'reasoning', mockups: 'composing'
-      };
-      if (statusMap[step]) update.status = statusMap[step];
+    const stepProgress = STEP_PROGRESS[step];
+    let progress = session.progress;
+    if (status === 'completed' && stepProgress) progress = Math.max(progress, stepProgress);
+    if (status === 'running' && stepProgress) progress = Math.max(progress, stepProgress - 5);
+
+    const patch: DesignSessionPatch = { progress };
+    if (extra.inferredContext) patch.inferredContext = extra.inferredContext;
+    if (extra.warnings) patch.warnings = extra.warnings;
+    if (extra.designs) patch.designs = extra.designs;
+    if (extra.artifacts) patch.artifacts = extra.artifacts;
+    if (extra.error) { patch.error = extra.error; patch.status = 'failed'; }
+
+    if (step === 'mockups' && status === 'completed') {
+      patch.status = 'completed';
+      patch.completedAt = new Date();
+      patch.progress = 100;
+    } else if (status === 'running' && RUNNING_STEP_STATUS[step]) {
+      patch.status = RUNNING_STEP_STATUS[step];
     }
-    await DesignSession.findByIdAndUpdate(sessionId, { $set: update });
-    return update;
+
+    // The step status is merged in SQL, so concurrent steps don't clobber each other.
+    return designSessionsRepository.update(sessionId, patch, { [step]: status });
   },
 };

@@ -1,44 +1,36 @@
-import { User, UserPreferences } from '../models';
+import { usersRepository, userPreferencesRepository } from '../repositories';
+import type { PreferencesPatch } from '../repositories/userPreferences.repository';
 import { NotFoundError } from '../middleware/errorHandler.middleware';
 
 export const usersService = {
-
   async findById(id: string) {
-    const user = await User.findById(id).select('-passwordHash');
+    const user = await usersRepository.findById(id);
     if (!user) throw new NotFoundError('User');
     return user;
   },
 
   async update(id: string, data: { name?: string; avatarUrl?: string }) {
-    const user = await User.findByIdAndUpdate(
-      id,
-      { $set: data },
-      { new: true, runValidators: true, select: '-passwordHash' },
-    );
+    const user = await usersRepository.update(id, {
+      name:      data.name?.trim(),
+      avatarUrl: data.avatarUrl,
+    });
     if (!user) throw new NotFoundError('User');
     return user;
   },
 
   async getPreferences(userId: string) {
-    return UserPreferences.findOne({ userId });
+    return userPreferencesRepository.findByUserId(userId);
   },
 
-  async upsertPreferences(userId: string, data: {
-    occupation?:  string;
-    styleGoals?:  string[];
-    occasions?:   string[];
-    culturalCtx?: string;
-    location?:    { lat: number; lon: number; city?: string; country?: string };
-  }) {
-    return UserPreferences.findOneAndUpdate(
-      { userId },
-      { $set: { ...data, userId } },
-      { new: true, upsert: true, runValidators: true },
-    );
+  async upsertPreferences(userId: string, data: PreferencesPatch) {
+    return userPreferencesRepository.upsert(userId, {
+      ...data,
+      occupation: typeof data.occupation === 'string' ? data.occupation.trim() : data.occupation,
+    });
   },
 
   async deactivate(id: string) {
-    await User.findByIdAndUpdate(id, { $set: { isActive: false } });
+    await usersRepository.update(id, { isActive: false });
     return { message: 'Account deactivated' };
   },
 };

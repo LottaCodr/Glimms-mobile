@@ -1,106 +1,84 @@
 /**
- * Seed script — populates MongoDB with dev data.
- * Run: npm run seed
+ * Seed script — creates the two dev accounts and some sample catalog items.
+ * Run: npm run seed   (after `npm run db:migrate`)
+ *
+ * Safe to re-run: it replaces only its own two accounts (their data goes with
+ * them via ON DELETE CASCADE) and touches nothing else. Refuses to run against
+ * production.
  */
-import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
-import { User } from '../models/User';
-import { UserPreferences } from '../models/UserPreferences';
-import { CatalogItem } from '../models/CatalogItem';
-import dotenv from 'dotenv';
+import { config } from '../config';
+import { disconnectDb, getDb } from '../db';
+import { catalogRepository, userPreferencesRepository, usersRepository } from '../repositories';
 
-dotenv.config();
-
-const MONGO_URI = process.env.MONGODB_URI ?? 'mongodb://localhost:27017/glimms';
+const SEED_PASSWORD = 'password123';
+const SEED_USERS = [
+  { email: 'free@glimms.ai',    name: 'Free User',    tier: 'free' as const },
+  { email: 'premium@glimms.ai', name: 'Premium User', tier: 'premium' as const },
+];
 
 async function seed() {
-  await mongoose.connect(MONGO_URI);
-  console.log('Connected to MongoDB');
+  if (config.nodeEnv === 'production') {
+    throw new Error('Refusing to seed: NODE_ENV=production');
+  }
 
-  // Clear existing data
-  await Promise.all([
-    User.deleteMany({}),
-    UserPreferences.deleteMany({}),
-    CatalogItem.deleteMany({}),
-  ]);
+  const passwordHash = await bcrypt.hash(SEED_PASSWORD, 10);
 
-  // Create dev users
-  const passwordHash = await bcrypt.hash('password123', 10);
+  await getDb().transaction(async (tx) => {
+    await tx.query('delete from users where email = any($1::text[])', [SEED_USERS.map((u) => u.email)]);
 
-  const [freeUser, premiumUser] = await User.insertMany([
-    {
-      email:        'free@glimms.ai',
-      passwordHash,
-      name:         'Free User',
-      tier:         'free',
-    },
-    {
-      email:        'premium@glimms.ai',
-      passwordHash,
-      name:         'Premium User',
-      tier:         'premium',
-    },
-  ]);
+    const [freeUser, premiumUser] = await Promise.all(
+      SEED_USERS.map((user) => usersRepository.create({ ...user, passwordHash }, tx)),
+    );
+    console.log(`✅ Created users: ${freeUser.email}, ${premiumUser.email}`);
 
-  console.log(`✅ Created users: ${freeUser.email}, ${premiumUser.email}`);
+    await userPreferencesRepository.upsert(freeUser.id, {
+      occupation:  'designer',
+      styleGoals:  ['look professional', 'be comfortable'],
+      occasions:   ['work', 'casual'],
+      culturalCtx: 'west_africa',
+      location:    { lat: 6.5, lon: 3.3, city: 'Lagos', country: 'Nigeria' },
+    }, tx);
 
-  // Preferences
-  await UserPreferences.create({
-    userId:      freeUser._id,
-    occupation:  'designer',
-    styleGoals:  ['look professional', 'be comfortable'],
-    occasions:   ['work', 'casual'],
-    culturalCtx: 'west_africa',
-    location:    { lat: 6.5, lon: 3.3, city: 'Lagos', country: 'Nigeria' },
+    const base = {
+      userId: freeUser.id, vertical: 'wardrobe' as const,
+      texture: null, pattern: null, thumbnailKey: null, attributes: {},
+    };
+    await catalogRepository.insertMany([
+      {
+        ...base,
+        label: 'white button shirt', category: 'top',
+        color: { dominant: { hex: '#f5f5f5', rgb: { r: 245, g: 245, b: 245 } }, palette: [], mood: 'neutral' },
+        imageKey: 'uploads/seed/shirt.jpg', confidence: 0.95,
+        tags: ['cotton', 'formal'], styleTags: ['smart-casual', 'formal'],
+      },
+      {
+        ...base,
+        label: 'navy chinos', category: 'bottom',
+        color: { dominant: { hex: '#1e3a5f', rgb: { r: 30, g: 58, b: 95 } }, palette: [], mood: 'cool' },
+        imageKey: 'uploads/seed/chinos.jpg', confidence: 0.91,
+        tags: ['cotton', 'slim-fit'], styleTags: ['smart-casual', 'formal'],
+      },
+      {
+        ...base,
+        label: 'white sneakers', category: 'footwear',
+        color: { dominant: { hex: '#ffffff', rgb: { r: 255, g: 255, b: 255 } }, palette: [], mood: 'neutral' },
+        imageKey: 'uploads/seed/sneakers.jpg', confidence: 0.88,
+        tags: ['casual'], styleTags: ['casual', 'minimalist'],
+      },
+    ], tx);
+    console.log('✅ Created sample catalog items');
   });
 
-  // Sample catalog items
-  await CatalogItem.insertMany([
-    {
-      userId:     freeUser._id,
-      vertical:   'wardrobe',
-      label:      'white button shirt',
-      category:   'top',
-      color:      { dominant: { hex: '#f5f5f5', rgb: { r: 245, g: 245, b: 245 } }, palette: [], mood: 'neutral' },
-      imageKey:   'uploads/seed/shirt.jpg',
-      confidence: 0.95,
-      tags:       ['cotton', 'formal'],
-      styleTags:  ['smart-casual', 'formal'],
-    },
-    {
-      userId:     freeUser._id,
-      vertical:   'wardrobe',
-      label:      'navy chinos',
-      category:   'bottom',
-      color:      { dominant: { hex: '#1e3a5f', rgb: { r: 30, g: 58, b: 95 } }, palette: [], mood: 'cool' },
-      imageKey:   'uploads/seed/chinos.jpg',
-      confidence: 0.91,
-      tags:       ['cotton', 'slim-fit'],
-      styleTags:  ['smart-casual', 'formal'],
-    },
-    {
-      userId:     freeUser._id,
-      vertical:   'wardrobe',
-      label:      'white sneakers',
-      category:   'footwear',
-      color:      { dominant: { hex: '#ffffff', rgb: { r: 255, g: 255, b: 255 } }, palette: [], mood: 'neutral' },
-      imageKey:   'uploads/seed/sneakers.jpg',
-      confidence: 0.88,
-      tags:       ['casual'],
-      styleTags:  ['casual', 'minimalist'],
-    },
-  ]);
-
-  console.log('✅ Created sample catalog items');
   console.log('\n📋 Dev credentials:');
-  console.log('  free@glimms.ai     / password123  (free tier)');
-  console.log('  premium@glimms.ai  / password123  (premium tier)');
-
-  await mongoose.disconnect();
+  console.log(`  free@glimms.ai     / ${SEED_PASSWORD}  (free tier)`);
+  console.log(`  premium@glimms.ai  / ${SEED_PASSWORD}  (premium tier)`);
   console.log('\n✅ Seed complete');
 }
 
-seed().catch(err => {
-  console.error('Seed failed:', err);
-  process.exit(1);
-});
+seed()
+  .catch((err) => {
+    console.error('Seed failed:', err);
+    process.exitCode = 1;
+  })
+  .finally(() => disconnectDb());

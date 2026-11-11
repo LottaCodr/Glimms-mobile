@@ -5,7 +5,9 @@ import { logger } from '../lib/logger';
 import { designsService } from '../services/designs.service';
 import { catalogService } from '../services/catalog.service';
 import { notificationsService } from '../services/notifications.service';
-import { DesignSession } from '../models/DesignSession';
+import { designJobsRepository, designSessionsRepository } from '../repositories';
+import type { DesignSession } from '../models';
+import { isUuid } from '../utils/uuid';
 import { DesignJobData } from '../lib/queue';
 import { aiClient } from '../lib/aiClient';
 import { designSessionsService } from '../services/designSessions.service';
@@ -24,6 +26,11 @@ function emit(jobId: string, event: string, data: Record<string, unknown>) {
   _io?.to(`session:${jobId}`).emit(event, data);
 }
 
+/** Ids arrive from the queue, so they are not trusted to be well-formed. */
+async function findSession(sessionId: unknown): Promise<DesignSession | null> {
+  return isUuid(sessionId) ? designSessionsRepository.findById(sessionId) : null;
+}
+
 // ── Idempotent step helper per guide §7 ──────────────────────────────────────
 async function runOnce(
   sessionId: string,
@@ -32,13 +39,12 @@ async function runOnce(
   fn: () => Promise<any>,
 ): Promise<any> {
   const _idempotencyKey = `${sessionId}:${step}:${correlationId}`;
-  // Check if step already completed in DesignSession (embedded steps map)
+  // Check if step already completed (design_sessions.steps)
   logger.debug({ sessionId, step, _idempotencyKey }, 'runOnce check');
   try {
-    const sess = await DesignSession.findById(sessionId).select('steps').lean() as any;
+    const sess = await findSession(sessionId);
     if (sess) {
-      const steps = sess.steps instanceof Map ? Object.fromEntries(sess.steps) : sess.steps;
-      if (steps?.[step] === 'completed') {
+      if (sess.steps?.[step] === 'completed') {
         logger.debug({ sessionId, step }, 'runOnce — step already completed, skipping');
         // Return stored result is not persisted for all steps; caller should handle by re-fetching from DB.
         // For now, just indicate skip by returning null and let caller re-read.
@@ -206,8 +212,7 @@ async function runSessionPipeline(job: Job<any>): Promise<void> {
 
   // Helper to update session steps + emit WS
   async function setStep(step: string, status: 'pending'|'running'|'completed'|'failed', progress: number, extra: any = {}) {
-    await designSessionsService.updateStep(sessionId, step, status as any, extra);
-    const session = await DesignSession.findById(sessionId).lean() as any;
+    const session = await designSessionsService.updateStep(sessionId, step, status, extra);
     const wsPayload: any = { status: session?.status ?? 'queued', step, progress, ...extra };
     emit(sessionId, 'job:update', wsPayload);
     // Also map to guide §3.4 status shape
@@ -216,11 +221,11 @@ async function runSessionPipeline(job: Job<any>): Promise<void> {
 
   try {
     // Load session for inputContext
-    const sessionDoc = await DesignSession.findById(sessionId);
+    const sessionDoc = await findSession(sessionId);
     if (!sessionDoc) throw new Error('Session not found');
     const inputCtx = sessionDoc.inputContext as any;
     // Mark queued → detecting
-    await DesignSession.findByIdAndUpdate(sessionId, { $set: { status: 'queued', progress: 10 } });
+    await designSessionsRepository.update(sessionId, { status: 'queued', progress: 10 });
 
     // Parallel: quality guard, context inference, object detection — can run together per graph
     // But detection is needed before attributes; quality can block pipeline if failed
@@ -252,7 +257,7 @@ async function runSessionPipeline(job: Job<any>): Promise<void> {
       qualityWarnings = results.flatMap((r:any)=> r.guidance ?? r.issues ?? []);
       // Persist sourceImages quality
       if (results.length) {
-        const sess = await DesignSession.findById(sessionId);
+        const sess = await findSession(sessionId);
         if (sess) {
           results.forEach((r:any) => {
             const img = sess.sourceImages.find(s => s.objectKey === r.image_key);
@@ -262,7 +267,7 @@ async function runSessionPipeline(job: Job<any>): Promise<void> {
               img.width = r.width; img.height = r.height;
             }
           });
-          await sess.save();
+          await designSessionsRepository.update(sessionId, { sourceImages: sess.sourceImages });
         }
       }
       await setStep('quality', 'completed', 20);
@@ -274,7 +279,7 @@ async function runSessionPipeline(job: Job<any>): Promise<void> {
 
     // Quality review gate per guide §7: if quality !passed → move to quality_review and notify
     if (!qualityPassed) {
-      await DesignSession.findByIdAndUpdate(sessionId, { $set: { status: 'quality_review', warnings: qualityWarnings } });
+      await designSessionsRepository.update(sessionId, { status: 'quality_review', warnings: qualityWarnings });
       emit(sessionId, 'job:update', { status: 'quality_review', step: 'quality', progress: 20, warnings: qualityWarnings });
       // Per guide, stop pipeline and ask for recapture — but still allow designs? We will stop here for true quality failure
       // To avoid blocking, we continue but flag warning; uncomment next lines to enforce gate:
@@ -299,16 +304,16 @@ async function runSessionPipeline(job: Job<any>): Promise<void> {
 
     // Persist warnings if any fallback was used
     if (detectionData.errors?.length) {
-      await DesignSession.findByIdAndUpdate(sessionId, { $push: { warnings: { $each: detectionData.errors } } } as any);
+      await designSessionsRepository.appendWarnings(sessionId, detectionData.errors.map(String));
     }
     // Guide: detector fallback must be marked as warning outside dev
     if (!config.isDev && (detectionData as any).fallback) {
-      await DesignSession.findByIdAndUpdate(sessionId, { $push: { warnings: 'Detector used fallback — dev only' } } as any);
+      await designSessionsRepository.appendWarnings(sessionId, ['Detector used fallback — dev only']);
     }
 
     if (!detectionData.items?.length) {
       const emptyResult = { designs: [], vertical: verticalVal, itemCount: 0, message: 'No items detected. Try re-scanning with better lighting.', generatedAt: new Date().toISOString() };
-      await DesignSession.findByIdAndUpdate(sessionId, { $set: { status: 'completed', progress: 100, designs: [], completedAt: new Date() } });
+      await designSessionsRepository.update(sessionId, { status: 'completed', progress: 100, designs: [], completedAt: new Date() });
       emit(sessionId, 'job:complete', emptyResult);
       emit(sessionId, 'session:update', { session_id: sessionId, status: 'completed', progress: 100, designs: [] });
       return;
@@ -336,7 +341,7 @@ async function runSessionPipeline(job: Job<any>): Promise<void> {
     // Check CLIP fallback warning per guide §5.3
     const hasFallbackEmbedding = enrichedItems.some((it:any)=> it.embedding && it.embedding_model === 'fallback');
     if (hasFallbackEmbedding && !config.isDev) {
-      await DesignSession.findByIdAndUpdate(sessionId, { $push: { warnings: 'Embedding used offline fallback — not semantic in production' } } as any);
+      await designSessionsRepository.appendWarnings(sessionId, ['Embedding used offline fallback — not semantic in production']);
     }
     await setStep('attributes', 'completed', 50, { itemCount: enrichedItems.length });
 
@@ -393,7 +398,7 @@ async function runSessionPipeline(job: Job<any>): Promise<void> {
 
     // Permutation engine — needs enriched items + context
     await setStep('permutations', 'running', 65);
-    const contextForPerm = (await DesignSession.findById(sessionId).lean() as any)?.inferredContext ?? {};
+    const contextForPerm: any = (await findSession(sessionId))?.inferredContext ?? {};
     const mergedContext = { ...contextForPerm, ...(inputCtx ?? {}), style_constraints: { ...(contextForPerm?.style_constraints ?? {}), ...(inputCtx?.preferences ?? {}) } };
     const permData = await runOnce(sessionId, 'permutations', correlationId, () =>
       aiClient.generatePermutations({ vertical: verticalVal, items: enrichedItems, context: mergedContext, max_permutations: 20 }, correlationId)
@@ -414,12 +419,11 @@ async function runSessionPipeline(job: Job<any>): Promise<void> {
     await setStep('reasoning', 'completed', 90, { designs });
 
     // Persist designs to session
-    await DesignSession.findByIdAndUpdate(sessionId, { $set: { designs } });
+    await designSessionsRepository.update(sessionId, { designs });
 
-    // For legacy DesignJob compatibility, also update legacy job if exists
+    // For legacy design-job compatibility, also update the legacy job if one exists
     try {
-      const { DesignJob } = await import('../models');
-      await DesignJob.findByIdAndUpdate(sessionId, { $set: { result: { designs, vertical: verticalVal } } });
+      await designJobsRepository.update(sessionId, { result: { designs, vertical: verticalVal } });
     } catch {}
 
     // Mockup compositor — per design, waits for selected permutation + source keys
@@ -463,7 +467,7 @@ async function runSessionPipeline(job: Job<any>): Promise<void> {
       designCount: designs.length,
       generatedAt: new Date().toISOString(),
     };
-    await DesignSession.findByIdAndUpdate(sessionId, { $set: { status: 'completed', progress: 100, completedAt: new Date() } });
+    await designSessionsRepository.update(sessionId, { status: 'completed', progress: 100, completedAt: new Date() });
     // Also update legacy job for clients polling old endpoint
     try { await designsService.updateJobStatus(sessionId, 'completed', result as any); } catch {}
 
@@ -487,7 +491,7 @@ async function runSessionPipeline(job: Job<any>): Promise<void> {
       details: err.response?.data,
       request_id: correlationId,
     };
-    await DesignSession.findByIdAndUpdate(sessionId, { $set: { status: 'failed', error: errorShape } });
+    await designSessionsRepository.update(sessionId, { status: 'failed', error: errorShape });
     try { await designsService.updateJobStatus(sessionId, 'failed', undefined, err.message); } catch {}
     emit(sessionId, 'job:failed', { error: 'Design generation failed. Please try again.', code: errorShape.code, request_id: correlationId });
     emit(sessionId, 'session:update', { session_id: sessionId, status: 'failed', error: errorShape });
@@ -498,17 +502,26 @@ async function runSessionPipeline(job: Job<any>): Promise<void> {
 // ── Router: decide which pipeline to run ────────────────────────────────────
 async function runPipeline(job: Job<any>): Promise<void> {
   const data = job.data as any;
+
+  // Jobs enqueued before the move to Postgres carry Mongo ObjectIds. Their rows
+  // no longer exist under those ids, so running the (expensive) AI pipeline for
+  // them could never be persisted. Drop them instead of retrying.
+  const queuedIds = [data.sessionId, data.jobId, data.userId].filter((id) => id !== undefined && id !== null);
+  if (queuedIds.some((id) => !isUuid(id))) {
+    logger.warn({ jobId: data.jobId, sessionId: data.sessionId }, 'Worker: discarding job with pre-migration (non-uuid) ids');
+    return;
+  }
   // If payload has sessionId or vertical+imageKeys from v1 flow, treat as session
   if (data.sessionId || (data.imageKeys && data.correlationId && data.pipelineVersion)) {
     return runSessionPipeline(job);
   }
-  // Check if jobId exists as DesignSession (client used v1 but enqueued via legacy)
+  // Check if jobId exists as a design session (client used v1 but enqueued via legacy)
   try {
-    const sess = await DesignSession.findById(data.jobId).lean();
+    const sess = await findSession(data.jobId);
     if (sess) {
       // Convert legacy jobData to session shape for unified handling
       job.data.sessionId = data.jobId;
-      job.data.correlationId = (sess as any).correlationId;
+      job.data.correlationId = sess.correlationId;
       return runSessionPipeline(job as any);
     }
   } catch {}

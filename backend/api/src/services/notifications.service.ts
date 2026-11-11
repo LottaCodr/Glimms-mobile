@@ -1,4 +1,4 @@
-import { DeviceToken } from '../models';
+import { deviceTokensRepository } from '../repositories';
 import { config } from '../config';
 import { logger } from '../lib/logger';
 import * as admin from 'firebase-admin';
@@ -28,11 +28,11 @@ if (config.sendgrid.apiKey) {
 export const notificationsService = {
 
   async registerDevice(userId: string, token: string, platform: 'ios' | 'android') {
-    return DeviceToken.findOneAndUpdate(
-      { token },
-      { $set: { userId, token, platform } },
-      { new: true, upsert: true },
-    );
+    return deviceTokensRepository.upsert({ userId, token, platform });
+  },
+
+  async unregisterDevice(userId: string, token: string) {
+    await deviceTokensRepository.delete(userId, token);
   },
 
   async sendPush(
@@ -46,7 +46,7 @@ export const notificationsService = {
       return { sent: 0 };
     }
 
-    const deviceTokens = await DeviceToken.find({ userId }).lean();
+    const deviceTokens = await deviceTokensRepository.listByUserId(userId);
     if (!deviceTokens.length) return { sent: 0 };
 
     const results = await Promise.allSettled(

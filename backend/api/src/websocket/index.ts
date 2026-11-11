@@ -1,10 +1,10 @@
 import { Server as HTTPServer } from 'http';
 import { Server as IOServer, Socket } from 'socket.io';
-import jwt from 'jsonwebtoken';
-import mongoose from 'mongoose';
 import { config } from '../config';
 import { logger } from '../lib/logger';
-import { AuthUser } from '../middleware/auth.middleware';
+import { AuthUser, verifyAccessToken } from '../middleware/auth.middleware';
+import { designJobsRepository, designSessionsRepository } from '../repositories';
+import { isUuid } from '../utils/uuid';
 
 export function createWebSocketServer(httpServer: HTTPServer): IOServer {
   const io = new IOServer(httpServer, {
@@ -30,7 +30,7 @@ export function createWebSocketServer(httpServer: HTTPServer): IOServer {
     }
 
     try {
-      socket.data.user = jwt.verify(token, config.jwt.secret) as AuthUser;
+      socket.data.user = verifyAccessToken(token);
       next();
     } catch {
       next(new Error('Invalid or expired token'));
@@ -43,21 +43,19 @@ export function createWebSocketServer(httpServer: HTTPServer): IOServer {
     logger.debug({ userId: user.sub, socketId: socket.id }, 'WS client connected');
 
     async function canAccess(id: string, kind: 'job' | 'session'): Promise<boolean> {
-      if (!mongoose.Types.ObjectId.isValid(id)) {
+      if (!isUuid(id)) {
         socket.emit('error', { message: `Invalid ${kind} id`, jobId: id, sessionId: id });
         return false;
       }
       try {
         if (kind === 'job') {
-          const { DesignJob } = await import('../models');
-          const job = await DesignJob.findById(id).select('userId').lean();
+          const job = await designJobsRepository.findById(id);
           if (!job) { socket.emit('error', { message: 'Job not found', jobId: id }); return false; }
-          if (job.userId.toString() !== user.sub) { socket.emit('error', { message: 'Not authorized for this job', jobId: id }); return false; }
+          if (job.userId !== user.sub) { socket.emit('error', { message: 'Not authorized for this job', jobId: id }); return false; }
         } else {
-          const { DesignSession } = await import('../models/DesignSession');
-          const sess = await DesignSession.findById(id).select('userId').lean();
+          const sess = await designSessionsRepository.findById(id);
           if (!sess) { socket.emit('error', { message: 'Session not found', sessionId: id }); return false; }
-          if ((sess as any).userId.toString() !== user.sub) { socket.emit('error', { message: 'Not authorized for this session', sessionId: id }); return false; }
+          if (sess.userId !== user.sub) { socket.emit('error', { message: 'Not authorized for this session', sessionId: id }); return false; }
         }
       } catch (err: any) {
         logger.warn({ err: err.message, id, kind }, 'WS subscribe ownership check failed');

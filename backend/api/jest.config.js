@@ -5,8 +5,9 @@ module.exports = {
   roots:               ['<rootDir>/src'],
   testMatch:           ['**/*.test.ts', '**/*.spec.ts'],
   moduleNameMapper:    { '^@/(.*)$': '<rootDir>/src/$1' },
-  collectCoverageFrom: ['src/**/*.ts', '!src/server.ts', '!src/**/*.d.ts'],
+  collectCoverageFrom: ['src/**/*.ts', '!src/server.ts', '!src/**/*.d.ts', '!src/test/**'],
   coverageDirectory:   'coverage',
-  setupFilesAfterFramework: [],
+  // Sets the env vars src/config validates on import.
+  setupFiles:          ['<rootDir>/src/test/setupEnv.ts'],
   testTimeout:         15_000,
 };

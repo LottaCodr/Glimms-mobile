@@ -12,7 +12,17 @@ const schema = z.object({
   PORT:                     z.string().default('4000'),
   NODE_ENV:                 z.enum(['development', 'staging', 'production', 'test']).default('development'),
 
-  MONGODB_URI:              z.string().default('mongodb://localhost:27017/glimms'),
+  // Supabase Postgres connection string (Project Settings → Database → Connect).
+  // Mandatory in production; the default targets the local docker-compose Postgres.
+  DATABASE_URL:             blankAsUndefined(z.string().optional()),
+  // TLS: disable | require (encrypt) | verify-full (encrypt + verify CA and host).
+  // Unset = disable for localhost, require for everything else.
+  DATABASE_SSL:             blankAsUndefined(z.enum(['disable', 'require', 'verify-full']).optional()),
+  // PEM CA bundle for verify-full (Supabase: Database Settings → SSL → download certificate).
+  DATABASE_CA_CERT:         blankAsUndefined(z.string().optional()),
+  DATABASE_POOL_MAX:        blankAsUndefined(z.string().regex(/^\d+$/).default('10')),
+  // Apply pending SQL migrations when the server boots (for hosts with no release step).
+  DB_MIGRATE_ON_START:      blankAsUndefined(z.enum(['true', 'false']).default('false')),
   REDIS_URL:                z.string().default('redis://localhost:6379'),
 
   JWT_SECRET:               z.string().min(32),
@@ -95,6 +105,26 @@ if (!parsed.success) {
 
 const e = parsed.data;
 
+const LOCAL_DATABASE_URL = 'postgresql://postgres:postgres@localhost:5432/glimms';
+
+if (e.NODE_ENV === 'production' && !e.DATABASE_URL) {
+  console.error('\n❌  DATABASE_URL is required in production (Supabase Postgres connection string).\n');
+  process.exit(1);
+}
+
+const databaseUrl = e.DATABASE_URL ?? LOCAL_DATABASE_URL;
+
+/** Local databases rarely speak TLS; anything remote must. */
+function defaultSslMode(url: string): 'disable' | 'require' {
+  try {
+    const host = new URL(url).hostname;
+    const local = ['localhost', '127.0.0.1', '[::1]', '::1', 'postgres', 'host.docker.internal'].includes(host);
+    return local ? 'disable' : 'require';
+  } catch {
+    return 'require';
+  }
+}
+
 const aiUrls         = resolveAiUrls(process.env);
 const aiUrlsDetailed = resolveAiUrlsDetailed(process.env);
 
@@ -115,7 +145,13 @@ export const config = {
   nodeEnv: e.NODE_ENV,
   isDev:   e.NODE_ENV === 'development',
 
-  mongodb: { uri: e.MONGODB_URI },
+  database: {
+    url:            databaseUrl,
+    sslMode:        e.DATABASE_SSL ?? defaultSslMode(databaseUrl),
+    caCert:         e.DATABASE_CA_CERT?.replace(/\\n/g, '\n'),
+    poolMax:        Math.max(1, parseInt(e.DATABASE_POOL_MAX, 10)),
+    migrateOnStart: e.DB_MIGRATE_ON_START === 'true',
+  },
   redis:   { url: e.REDIS_URL },
 
   jwt: {

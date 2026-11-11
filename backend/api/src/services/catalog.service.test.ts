@@ -1,44 +1,30 @@
-import mongoose from 'mongoose';
 import { catalogService } from '../services/catalog.service';
-import { CatalogItem } from '../models/CatalogItem';
+import { setupTestDatabase, TestDatabase } from '../test/testDatabase';
+import { createUser, SAMPLE_ITEM as MOCK_ITEM, UNKNOWN_ID } from '../test/fixtures';
 
-// Each test file gets its own database: jest runs files in parallel workers, and
-// every suite wipes its DB (dropDatabase in afterAll / deleteMany in beforeEach).
-// Sharing one DB made suites delete each other's data mid-run in CI.
-const BASE_URI = process.env.MONGODB_URI ?? 'mongodb://localhost:27017/glimms_test';
-const MONGO_URI = BASE_URI.replace(/\/([^/?]+)(\?.*)?$/, '/$1_catalogsvc$2');
-const MOCK_USER_ID = new mongoose.Types.ObjectId().toString();
-const OTHER_USER_ID = new mongoose.Types.ObjectId().toString();
-
-const MOCK_ITEM = {
-  vertical:   'wardrobe' as const,
-  label:      'white shirt',
-  category:   'top',
-  color:      { dominant: { hex: '#ffffff', rgb: { r: 255, g: 255, b: 255 } }, palette: [], mood: 'neutral' },
-  imageKey:   'uploads/test/shirt.jpg',
-  confidence: 0.92,
-  tags:       ['cotton', 'classic'],
-  styleTags:  ['smart-casual'],
-};
+let database: TestDatabase;
+let MOCK_USER_ID: string;
+let OTHER_USER_ID: string;
 
 beforeAll(async () => {
-  await mongoose.connect(MONGO_URI);
+  database = await setupTestDatabase();
 });
 
 afterAll(async () => {
-  await mongoose.connection.dropDatabase();
-  await mongoose.disconnect();
+  await database.close();
 });
 
 beforeEach(async () => {
-  await CatalogItem.deleteMany({});
+  await database.reset();
+  MOCK_USER_ID = (await createUser()).id;
+  OTHER_USER_ID = (await createUser()).id;
 });
 
 describe('catalogService.create', () => {
   it('creates an item and returns it', async () => {
     const item = await catalogService.create(MOCK_USER_ID, MOCK_ITEM);
     expect(item.label).toBe('white shirt');
-    expect(item.userId.toString()).toBe(MOCK_USER_ID);
+    expect(item.userId).toBe(MOCK_USER_ID);
     expect(item.isActive).toBe(true);
   });
 });
@@ -54,7 +40,7 @@ describe('catalogService.list', () => {
     const res: any = await catalogService.list(MOCK_USER_ID, {});
     const items = Array.isArray(res) ? res : res.items;
     expect(items.length).toBe(2);
-    items.forEach((i: any) => expect(i.userId.toString()).toBe(MOCK_USER_ID));
+    items.forEach((i: any) => expect(i.userId).toBe(MOCK_USER_ID));
   });
 
   it('filters by vertical', async () => {
@@ -87,21 +73,31 @@ describe('catalogService.list', () => {
 describe('catalogService.findOne', () => {
   it('returns the item for the owner', async () => {
     const created = await catalogService.create(MOCK_USER_ID, MOCK_ITEM);
-    const found = await catalogService.findOne(created._id.toString(), MOCK_USER_ID);
+    const found = await catalogService.findOne(created.id, MOCK_USER_ID);
     expect(found.label).toBe('white shirt');
   });
 
   it('throws ForbiddenError for wrong owner', async () => {
     const created = await catalogService.create(MOCK_USER_ID, MOCK_ITEM);
     await expect(
-      catalogService.findOne(created._id.toString(), OTHER_USER_ID),
+      catalogService.findOne(created.id, OTHER_USER_ID),
     ).rejects.toMatchObject({ statusCode: 403 });
   });
 
-  it('throws NotFoundError for invalid id', async () => {
+  it('throws NotFoundError for a malformed id', async () => {
     await expect(
-      catalogService.findOne('not-an-object-id', MOCK_USER_ID),
+      catalogService.findOne('not-a-uuid', MOCK_USER_ID),
     ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('throws NotFoundError for a legacy Mongo ObjectId', async () => {
+    await expect(
+      catalogService.findOne('665a1b2c3d4e5f6a7b8c9d0e', MOCK_USER_ID),
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('throws NotFoundError for an unknown id', async () => {
+    await expect(catalogService.findOne(UNKNOWN_ID, MOCK_USER_ID)).rejects.toMatchObject({ statusCode: 404 });
   });
 });
 
@@ -109,7 +105,7 @@ describe('catalogService.update', () => {
   it('updates label and tags', async () => {
     const created = await catalogService.create(MOCK_USER_ID, MOCK_ITEM);
     const updated = await catalogService.update(
-      created._id.toString(), MOCK_USER_ID,
+      created.id, MOCK_USER_ID,
       { label: 'blue shirt', tags: ['linen'] },
     );
     expect(updated!.label).toBe('blue shirt');
@@ -120,7 +116,7 @@ describe('catalogService.update', () => {
 describe('catalogService.remove', () => {
   it('soft-deletes the item', async () => {
     const created = await catalogService.create(MOCK_USER_ID, MOCK_ITEM);
-    await catalogService.remove(created._id.toString(), MOCK_USER_ID);
+    await catalogService.remove(created.id, MOCK_USER_ID);
 
     const res: any = await catalogService.list(MOCK_USER_ID, {});
     const items = Array.isArray(res) ? res : res.items;
@@ -133,5 +129,104 @@ describe('catalogService.bulkCreate', () => {
     const items = [MOCK_ITEM, { ...MOCK_ITEM, label: 'jeans', category: 'bottom' }];
     const result = await catalogService.bulkCreate(MOCK_USER_ID, items);
     expect(result.length).toBe(2);
+  });
+});
+
+describe('catalogService — stored shape', () => {
+  it('applies schema defaults and returns camelCase with a uuid id', async () => {
+    const item = await catalogService.create(MOCK_USER_ID, {
+      vertical: 'wardrobe', label: '  linen shirt  ', category: 'top',
+      color: { dominant: { hex: '#eeeeee', rgb: { r: 238, g: 238, b: 238 } } },
+      imageKey: 'uploads/test/linen.jpg', confidence: 0.5,
+    });
+
+    expect(item.id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(item).toMatchObject({
+      label: 'linen shirt',
+      color: { palette: [], mood: 'neutral' },
+      texture: null, pattern: null, thumbnailKey: null,
+      attributes: {}, tags: [], styleTags: [], isActive: true,
+    });
+    expect(item.createdAt).toBeInstanceOf(Date);
+    expect(item).not.toHaveProperty('_id');
+    expect(item).not.toHaveProperty('user_id');
+  });
+
+  it('round-trips nested JSON attributes', async () => {
+    const attributes = { bbox: { x: 1, y: 2, width: 3, height: 4 }, materials: ['cotton', 'linen'], note: 'it\'s "quoted"' };
+    const created = await catalogService.create(MOCK_USER_ID, { ...MOCK_ITEM, attributes });
+    const found = await catalogService.findOne(created.id, MOCK_USER_ID);
+    expect(found.attributes).toEqual(attributes);
+  });
+
+  it('ignores properties a client must not set', async () => {
+    const created = await catalogService.create(MOCK_USER_ID, {
+      ...MOCK_ITEM, userId: OTHER_USER_ID, isActive: false, id: UNKNOWN_ID,
+    } as any);
+    expect(created.userId).toBe(MOCK_USER_ID);
+    expect(created.isActive).toBe(true);
+    expect(created.id).not.toBe(UNKNOWN_ID);
+  });
+
+  it('rejects an invalid item with 400', async () => {
+    await expect(catalogService.create(MOCK_USER_ID, { ...MOCK_ITEM, confidence: 7 }))
+      .rejects.toMatchObject({ statusCode: 400 });
+  });
+});
+
+describe('catalogService.list — filters', () => {
+  it('matches category case-insensitively and treats wildcards literally', async () => {
+    await catalogService.create(MOCK_USER_ID, { ...MOCK_ITEM, category: 'Outer_Wear' });
+    await catalogService.create(MOCK_USER_ID, { ...MOCK_ITEM, category: 'outerXwear' });
+
+    expect((await catalogService.list(MOCK_USER_ID, { category: 'outer_wear' })).total).toBe(1);
+    expect((await catalogService.list(MOCK_USER_ID, { category: '%' })).total).toBe(0);
+    expect((await catalogService.list(MOCK_USER_ID, { category: 'OUTER' })).total).toBe(2);
+  });
+
+  it('is not injectable through filter values', async () => {
+    await catalogService.create(MOCK_USER_ID, MOCK_ITEM);
+    const res = await catalogService.list(MOCK_USER_ID, { tag: "x' or '1'='1", category: "'; drop table users; --" });
+    expect(res.total).toBe(0);
+    expect((await catalogService.list(MOCK_USER_ID, {})).total).toBe(1);
+  });
+
+  it('orders newest first', async () => {
+    const first = await catalogService.create(MOCK_USER_ID, { ...MOCK_ITEM, label: 'first' });
+    await database.db.query("update catalog_items set created_at = now() - interval '1 hour' where id = $1", [first.id]);
+    await catalogService.create(MOCK_USER_ID, { ...MOCK_ITEM, label: 'second' });
+
+    const { items } = await catalogService.list(MOCK_USER_ID, {});
+    expect(items.map((i) => i.label)).toEqual(['second', 'first']);
+  });
+});
+
+describe('catalogService.bulkCreate — AI output', () => {
+  it('stores the valid items and skips unusable ones', async () => {
+    const result = await catalogService.bulkCreate(MOCK_USER_ID, [
+      MOCK_ITEM,
+      { ...MOCK_ITEM, imageKey: '' },            // detector produced no image key
+      { ...MOCK_ITEM, color: { mood: 'warm' } }, // no dominant colour
+    ]);
+    expect(result).toHaveLength(1);
+    expect((await catalogService.list(MOCK_USER_ID, {})).total).toBe(1);
+  });
+});
+
+describe('catalogService.update', () => {
+  it('bumps updatedAt and leaves untouched fields alone', async () => {
+    const created = await catalogService.create(MOCK_USER_ID, MOCK_ITEM);
+    await database.db.query("update catalog_items set updated_at = now() - interval '1 hour' where id = $1", [created.id]);
+
+    const updated = await catalogService.update(created.id, MOCK_USER_ID, { tags: [] });
+    expect(updated!.tags).toEqual([]);
+    expect(updated!.label).toBe('white shirt');
+    expect(updated!.updatedAt.getTime()).toBeGreaterThan(Date.now() - 60_000);
+  });
+
+  it('refuses to update someone else\'s item', async () => {
+    const created = await catalogService.create(MOCK_USER_ID, MOCK_ITEM);
+    await expect(catalogService.update(created.id, OTHER_USER_ID, { label: 'mine now' }))
+      .rejects.toMatchObject({ statusCode: 403 });
   });
 });

@@ -4,11 +4,11 @@ import helmet from 'helmet';
 import cors from 'cors';
 import compression from 'compression';
 import pinoHttp from 'pino-http';
-import mongoose from 'mongoose';
 
 import { config } from './config';
 import { logger } from './lib/logger';
 import { redis } from './lib/redis';
+import { pingDb } from './db';
 import { generalLimiter } from './middleware/rateLimiter.middleware';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.middleware';
 
@@ -92,13 +92,9 @@ export function createApp(): Express {
   app.get('/health', async (_req, res) => {
     const checks: Record<string, string> = {};
     const services: Record<string, any> = {};
-    // Mongo
-    try {
-      const state = mongoose.connection.readyState; // 0=disconnected,1=connected,2=connecting,3=disconnecting
-      checks.mongodb = state === 1 ? 'ok' : `state:${state}`;
-    } catch {
-      checks.mongodb = 'error';
-    }
+    // Postgres (Supabase)
+    checks.database = (await pingDb()) ? 'ok' : 'unavailable';
+
     // Redis (best-effort)
     try {
       const pong = await redis.ping();
@@ -112,7 +108,7 @@ export function createApp(): Express {
       services.ai = 'use GET /health/ready for AI service readiness';
     }
 
-    const healthy = checks.mongodb === 'ok';
+    const healthy = checks.database === 'ok';
     res.status(healthy ? 200 : 503).json({
       status:  healthy ? 'ok' : 'degraded',
       service: 'glimms-api',

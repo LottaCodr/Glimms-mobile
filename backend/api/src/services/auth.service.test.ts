@@ -1,30 +1,22 @@
 /**
- * Auth service unit tests.
- * Uses in-memory MongoDB via mongoose.connect() against a real local instance.
+ * Auth service tests — run against a real (in-process) Postgres.
  */
-import mongoose from 'mongoose';
 import { authService } from '../services/auth.service';
-import { User } from '../models/User';
-import { RefreshToken } from '../models/RefreshToken';
+import { refreshTokensRepository, usersRepository } from '../repositories';
+import { setupTestDatabase, TestDatabase } from '../test/testDatabase';
 
-// Each test file gets its own database: jest runs files in parallel workers, and
-// every suite wipes its DB (dropDatabase in afterAll / deleteMany in beforeEach).
-// Sharing one DB made suites delete each other's data mid-run in CI.
-const BASE_URI = process.env.MONGODB_URI ?? 'mongodb://localhost:27017/glimms_test';
-const MONGO_URI = BASE_URI.replace(/\/([^/?]+)(\?.*)?$/, '/$1_authsvc$2');
+let database: TestDatabase;
 
 beforeAll(async () => {
-  await mongoose.connect(MONGO_URI);
+  database = await setupTestDatabase();
 });
 
 afterAll(async () => {
-  await mongoose.connection.dropDatabase();
-  await mongoose.disconnect();
+  await database.close();
 });
 
 beforeEach(async () => {
-  await User.deleteMany({});
-  await RefreshToken.deleteMany({});
+  await database.reset();
 });
 
 describe('authService.register', () => {
@@ -42,8 +34,9 @@ describe('authService.register', () => {
 
   it('stores the user with a hashed password', async () => {
     await authService.register({ email: 'test@glimms.ai', password: 'password123' });
-    const user = await User.findOne({ email: 'test@glimms.ai' }).select('+passwordHash');
+    const user = await usersRepository.findActiveCredentialsByEmail('test@glimms.ai');
     expect(user).not.toBeNull();
+    expect(user!.passwordHash).toMatch(/^\$2[aby]\$/); // bcrypt
     expect(user!.passwordHash).not.toBe('password123');
     expect(user!.tier).toBe('free');
   });
@@ -57,7 +50,7 @@ describe('authService.register', () => {
 
   it('stores email in lowercase', async () => {
     await authService.register({ email: 'UPPER@GLIMMS.AI', password: 'password123' });
-    const user = await User.findOne({ email: 'upper@glimms.ai' });
+    const user = await usersRepository.findByEmail('upper@glimms.ai');
     expect(user).not.toBeNull();
   });
 });
@@ -116,5 +109,55 @@ describe('authService.logout', () => {
     await authService.logout(refreshToken);
 
     await expect(authService.refresh(refreshToken)).rejects.toMatchObject({ statusCode: 401 });
+  });
+});
+
+describe('refresh token storage', () => {
+  it('never returns the password hash on a plain user lookup', async () => {
+    await authService.register({ email: 'nohash@glimms.ai', password: 'password123' });
+    const user = await usersRepository.findByEmail('nohash@glimms.ai');
+    expect(user).not.toHaveProperty('passwordHash');
+    expect(JSON.stringify(user)).not.toContain('$2');
+  });
+
+  it('lets a refresh token be redeemed exactly once under concurrency', async () => {
+    const { refreshToken } = await authService.register({ email: 'race@glimms.ai', password: 'password123' });
+
+    const results = await Promise.allSettled([
+      authService.refresh(refreshToken),
+      authService.refresh(refreshToken),
+      authService.refresh(refreshToken),
+    ]);
+
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+  });
+
+  it('rejects an expired refresh token and sweeps it', async () => {
+    const { refreshToken } = await authService.register({ email: 'expired@glimms.ai', password: 'password123' });
+    await database.db.query("update refresh_tokens set expires_at = now() - interval '1 minute'");
+
+    await expect(authService.refresh(refreshToken)).rejects.toMatchObject({ statusCode: 401 });
+    expect(await refreshTokensRepository.deleteExpired()).toBe(1);
+  });
+
+  it('refuses to refresh for a deactivated account', async () => {
+    const { refreshToken } = await authService.register({ email: 'gone@glimms.ai', password: 'password123' });
+    const user = await usersRepository.findByEmail('gone@glimms.ai');
+    await usersRepository.update(user!.id, { isActive: false });
+
+    await expect(authService.refresh(refreshToken)).rejects.toMatchObject({ statusCode: 401 });
+    await expect(authService.login({ email: 'gone@glimms.ai', password: 'password123' }))
+      .rejects.toMatchObject({ statusCode: 401 });
+  });
+
+  it('maps a concurrent duplicate sign-up to 409, not a database error', async () => {
+    const attempts = await Promise.allSettled([
+      authService.register({ email: 'twice@glimms.ai', password: 'password123' }),
+      authService.register({ email: 'twice@glimms.ai', password: 'password123' }),
+    ]);
+    const rejected = attempts.filter((a): a is PromiseRejectedResult => a.status === 'rejected');
+    expect(attempts.filter((a) => a.status === 'fulfilled')).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].reason).toMatchObject({ statusCode: 409 });
   });
 });

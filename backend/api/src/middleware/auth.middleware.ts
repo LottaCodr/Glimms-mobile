@@ -2,15 +2,29 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
 import { logger } from '../lib/logger';
+import { isUuid } from '../utils/uuid';
 
 export interface AuthUser {
-  sub:   string;   // MongoDB _id as string
+  sub:   string;   // users.id (uuid)
   email: string;
   tier:  'free' | 'premium' | 'pro';
 }
 
 export interface AuthRequest extends Request {
   user?: AuthUser;
+}
+
+/**
+ * Verifies an access token and returns its claims; throws if it is not valid.
+ *
+ * A correctly signed token whose subject is not a uuid was issued before the
+ * move to Postgres (Mongo ObjectId subjects). It is treated as invalid so the
+ * client refreshes or signs in again, instead of the id reaching a uuid column.
+ */
+export function verifyAccessToken(token: string): AuthUser {
+  const claims = jwt.verify(token, config.jwt.secret) as AuthUser;
+  if (!isUuid(claims?.sub)) throw new jwt.JsonWebTokenError('token subject is not a valid user id');
+  return claims;
 }
 
 function extractToken(req: Request): string | null {
@@ -29,7 +43,7 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
   }
 
   try {
-    req.user = jwt.verify(token, config.jwt.secret) as AuthUser;
+    req.user = verifyAccessToken(token);
     next();
   } catch (err) {
     logger.debug({ err }, 'JWT verification failed');
@@ -43,7 +57,7 @@ export function optionalAuth(req: AuthRequest, _res: Response, next: NextFunctio
   const token = extractToken(req);
   if (token) {
     try {
-      req.user = jwt.verify(token, config.jwt.secret) as AuthUser;
+      req.user = verifyAccessToken(token);
     } catch {
       // silently ignore — user stays undefined
     }

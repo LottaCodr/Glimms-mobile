@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { config } from '../config';
 import { logger } from '../lib/logger';
+import { isPgError, PgErrorCode, PgErrorLike } from '../db/errors';
 
 // ── Custom error classes ──────────────────────────────────────────────────────
 
@@ -45,6 +46,35 @@ export class BadRequestError extends AppError {
   }
 }
 
+// ── Database errors → HTTP ────────────────────────────────────────────────────
+
+/** `users_email_key` → `email`: constraints are named <table>_<column(s)>_<kind>. */
+function fieldFromConstraint(constraint: string | undefined): string {
+  const match = /^(?:users|refresh_tokens|user_preferences|subscriptions|catalog_items|design_jobs|design_sessions|saved_designs|device_tokens)_(.+?)_[a-z]+$/.exec(constraint ?? '');
+  return match?.[1] ?? 'field';
+}
+
+/**
+ * Maps the constraint violations a client can cause to 4xx responses. Returns
+ * null for everything else (connection loss, syntax errors, …) — those are
+ * server faults and fall through to the generic 500.
+ */
+function describeDatabaseError(err: PgErrorLike): { status: number; body: Record<string, unknown> } | null {
+  switch (err.code) {
+    case PgErrorCode.UniqueViolation:
+      return { status: 409, body: { error: `${fieldFromConstraint(err.constraint)} already exists`, code: 'DUPLICATE_KEY' } };
+    case PgErrorCode.InvalidTextRepresentation:
+      return { status: 400, body: { error: 'Invalid ID format', code: 'INVALID_ID' } };
+    case PgErrorCode.ForeignKeyViolation:
+      return { status: 409, body: { error: 'Referenced resource does not exist', code: 'INVALID_REFERENCE' } };
+    case PgErrorCode.CheckViolation:
+    case PgErrorCode.NotNullViolation:
+      return { status: 400, body: { error: 'Validation failed', details: [err.constraint ?? 'constraint violated'], code: 'VALIDATION_ERROR' } };
+    default:
+      return null;
+  }
+}
+
 // ── Global error handler ──────────────────────────────────────────────────────
 
 export function errorHandler(
@@ -59,24 +89,13 @@ export function errorHandler(
     return;
   }
 
-  // Mongoose validation error
-  if (err.name === 'ValidationError') {
-    const messages = Object.values((err as any).errors).map((e: any) => e.message);
-    res.status(400).json({ error: 'Validation failed', details: messages, code: 'VALIDATION_ERROR' });
-    return;
-  }
-
-  // Mongoose duplicate key
-  if ((err as any).code === 11000) {
-    const field = Object.keys((err as any).keyValue || {})[0] ?? 'field';
-    res.status(409).json({ error: `${field} already exists`, code: 'DUPLICATE_KEY' });
-    return;
-  }
-
-  // Mongoose cast error (e.g. invalid ObjectId)
-  if (err.name === 'CastError') {
-    res.status(400).json({ error: 'Invalid ID format', code: 'INVALID_ID' });
-    return;
+  // Database constraint violations that slipped past request validation
+  if (isPgError(err)) {
+    const response = describeDatabaseError(err);
+    if (response) {
+      res.status(response.status).json(response.body);
+      return;
+    }
   }
 
   // Multer errors

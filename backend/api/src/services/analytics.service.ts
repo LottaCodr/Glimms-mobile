@@ -1,5 +1,6 @@
 import { redis } from '../lib/redis';
 import { logger } from '../lib/logger';
+import { catalogRepository, savedDesignsRepository } from '../repositories';
 
 // Events are buffered in a Redis list and drained by a background consumer
 // into ClickHouse (or Segment/Mixpanel). For MVP the list itself is the store.
@@ -40,18 +41,11 @@ export const analyticsService = {
     const scanKey    = `scan_limit:${userId}:${today}`;
     try {
       const scansToday = parseInt((await redis.get(scanKey)) ?? '0');
-      // Also count total catalog items and saved designs if DB available (best-effort)
-      let catalogCount = 0;
-      let savedCount = 0;
-      try {
-        const { CatalogItem, SavedDesign } = await import('../models');
-        [catalogCount, savedCount] = await Promise.all([
-          CatalogItem.countDocuments({ userId, isActive: true } as any).catch(() => 0),
-          SavedDesign.countDocuments({ userId } as any).catch(() => 0),
-        ]);
-      } catch (_e) {
-        // ignore — counts remain 0
-      }
+      // Totals are a nice-to-have on the dashboard — never fail the request for them.
+      const [catalogCount, savedCount] = await Promise.all([
+        catalogRepository.countActive(userId).catch(() => 0),
+        savedDesignsRepository.countByUser(userId).catch(() => 0),
+      ]);
       return { scansToday, catalogCount, savedCount };
     } catch {
       return { scansToday: 0, catalogCount: 0, savedCount: 0 };
