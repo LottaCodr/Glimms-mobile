@@ -1,0 +1,92 @@
+version: "3.9"
+
+# ── Glimms AI Services ────────────────────────────────────────────────────────
+# Each service runs on its own port. The API (glimms-api) calls them internally.
+#
+# Ports are published on 127.0.0.1 only, so a development machine on a shared
+# network does not expose eight unauthenticated services. Set AI_INTERNAL_TOKEN
+# in .env to require a bearer token as well (mandatory when GLIMMS_ENV=production).
+#
+# Models: the vision services read ./models (mounted read-only). Build it once
+# with the same tooling the production image uses:
+#
+#   docker build --target models -t glimms-ai-models .
+#   docker run --rm -v "$PWD/models:/out" glimms-ai-models cp -r /models/. /out/
+#
+# Without it they answer with development fallbacks.
+
+services:
+  object-detection:
+    build:
+      context: .
+      dockerfile: services/object_detection/Dockerfile
+    ports: ["127.0.0.1:8001:8001"]
+    env_file: .env
+    environment: [PORT=8001, MODELS_DIR=/app/models]
+    volumes: ["./models:/app/models:ro"]
+    restart: unless-stopped
+
+  attribute-extractor:
+    build:
+      context: .
+      dockerfile: services/attribute_extractor/Dockerfile
+    ports: ["127.0.0.1:8002:8002"]
+    env_file: .env
+    environment: [PORT=8002, MODELS_DIR=/app/models]
+    volumes: ["./models:/app/models:ro"]
+    restart: unless-stopped
+
+  embedding-engine:
+    build:
+      context: .
+      dockerfile: services/embedding_engine/Dockerfile
+    ports: ["127.0.0.1:8003:8003"]
+    env_file: .env
+    environment: [PORT=8003]
+    restart: unless-stopped
+
+  permutation-engine:
+    build:
+      context: .
+      dockerfile: services/permutation_engine/Dockerfile
+    ports: ["127.0.0.1:8004:8004"]
+    env_file: .env
+    environment: [PORT=8004]
+    restart: unless-stopped
+
+  llm-reasoning:
+    build:
+      context: .
+      dockerfile: services/llm_reasoning/Dockerfile
+    ports: ["127.0.0.1:8005:8005"]
+    env_file: .env
+    environment: [PORT=8005]
+    restart: unless-stopped
+
+  mockup-compositor:
+    build:
+      context: .
+      dockerfile: services/mockup_compositor/Dockerfile
+    ports: ["127.0.0.1:8006:8006"]
+    env_file: .env
+    environment: [PORT=8006, MODELS_DIR=/app/models]
+    volumes: ["./models:/app/models:ro"]
+    restart: unless-stopped
+
+  quality-guard:
+    build:
+      context: .
+      dockerfile: services/quality_guard/Dockerfile
+    ports: ["127.0.0.1:8007:8007"]
+    env_file: .env
+    environment: [PORT=8007]
+    restart: unless-stopped
+
+  context-inference:
+    build:
+      context: .
+      dockerfile: services/context_inference/Dockerfile
+    ports: ["127.0.0.1:8008:8008"]
+    env_file: .env
+    environment: [PORT=8008]
+    restart: unless-stopped

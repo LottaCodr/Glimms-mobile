@@ -105,8 +105,6 @@
     "extra": {
       "apiUrl": "https://glimms-api.onrender.com",
       "wsUrl": "https://glimms-api.onrender.com",
-      "stripePremiumPriceId": {},
-      "stripeProPriceId": {},
       "router": {},
       "eas": {
         "projectId": "2b4900ae-b72b-4376-804c-1b71e72282ec"

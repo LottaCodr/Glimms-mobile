@@ -10,6 +10,37 @@ GLIMMS helps users:
 
 ---
 
+### Repository layout
+
+This repository holds the whole product. The mobile app lives at the root; the
+two backend services live under `backend/` and are built, tested and deployed
+independently.
+
+| Path | What | Stack | Docs |
+|---|---|---|---|
+| `/` | Mobile app | Expo, React Native, TypeScript | this file, `PROJECT.md` |
+| `backend/api` | REST + WebSocket API, job worker | Node 20, Express, **PostgreSQL on Supabase**, Redis/BullMQ | [`backend/api/README.md`](backend/api/README.md), [`FRONTEND_INTEGRATION.md`](backend/api/docs/FRONTEND_INTEGRATION.md) |
+| `backend/ai` | AI pipeline services (stateless) | Python 3.11, FastAPI | [`backend/ai/README.md`](backend/ai/README.md) |
+
+```
+mobile app ──HTTPS/WSS──► backend/api ──► Supabase Postgres, Redis, S3
+                               └────────► backend/ai  ──► Pinecone, S3
+```
+
+The app only ever talks to `backend/api`; it never connects to the database or
+to the AI services directly.
+
+Each part has its own dependencies and tooling — run commands from its own
+directory (`npm ci` at the root installs the mobile app only). CI is split the
+same way in `.github/workflows/` (`mobile.yml`, `api.yml`, `ai.yml`), each
+triggered only by changes to its own paths. The backends are excluded from the
+app's TypeScript, ESLint, Metro and EAS build (`.easignore`).
+
+`backend/api` and `backend/ai` were imported from the former `glimms-api` and
+`glimms-ai` repositories with their full commit history (`git subtree`).
+
+---
+
 ### Tech Stack
 
 - **Framework**: Expo + React Native
@@ -25,9 +56,8 @@ GLIMMS helps users:
 - **Onboarding / Setup**
   - `app/index.tsx`: initial entry / splash
   - `app/(onboarding)`: onboarding flow
-  - `app/screens/style-setup.tsx`: collect weather, occasion, color preferences, vibe
-  - `app/screens/processing.tsx`: shows progress while generating recommendations
-  - `app/screens/results.tsx`: displays suggested outfits and actions
+  - `app/screens/style-setup.tsx`: occasion, vibe and colour mood, opened from the scan screen
+  - `app/session/[id].tsx`: live progress and results for a scan
 
 - **Main Tabs** (`app/(tabs)`)
   - `home.tsx`: hero recommendations, trending styles
@@ -57,7 +87,7 @@ For some additional implementation notes, see `PROJECT.md`.
 
 2. **API configuration**
 
-   Account creation and sign-in use the hosted `glimms-api` configured in
+   Account creation and sign-in use the hosted API (`backend/api`) configured in
    `app.json`. To use a local or alternate API, copy `.env.example` to `.env`
    and set `EXPO_PUBLIC_API_URL` and `EXPO_PUBLIC_WS_URL`; environment values
    override `app.json`. A local URL must be reachable by the device. Do not use
@@ -91,6 +121,8 @@ For some additional implementation notes, see `PROJECT.md`.
 - `npm run ios` – run the app on iOS
 - `npm run web` – run the app in a web browser
 - `npm run lint` – run ESLint on the project
+- `npm test` – run the Jest test suite
+- `npm run typecheck` – TypeScript check
 - `npm run reset-project` – reset to a fresh Expo project template (use with caution)
 
 ---
@@ -141,9 +173,11 @@ eas submit --platform android      # Google Play (needs a service account key)
 ```
 
 Before submitting, also complete the store listing requirements (screenshots,
-privacy policy URL, content ratings) and set real Stripe price IDs via
-`EXPO_PUBLIC_STRIPE_PREMIUM_PRICE_ID` / `EXPO_PUBLIC_STRIPE_PRO_PRICE_ID`
-(or the matching `extra` values in `app.json`).
+privacy policy URL, content ratings). Plans and prices are served by the API
+(`GET /api/subscriptions/prices`); set `STRIPE_PREMIUM_PRICE_ID` and
+`STRIPE_PRO_PRICE_ID` on the API, not in the app.
+
+Open gaps are tracked in [`docs/GAP_ANALYSIS.md`](docs/GAP_ANALYSIS.md).
 
 ---
 

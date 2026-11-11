@@ -1,6 +1,6 @@
 /**
  * API types — mirrors FRONTEND_INTEGRATION.md §15.
- * Backend: glimms-api (Express + Mongoose). All dates are ISO strings.
+ * Backend: backend/api (Express + PostgreSQL on Supabase). All dates are ISO strings.
  */
 
 export type Tier = "free" | "premium" | "pro";
@@ -299,6 +299,25 @@ export type Subscription = {
 
 export type CheckoutResponse = { url: string; id: string };
 
+export type PaidTier = Exclude<Tier, "free">;
+
+/** A plan the server sells. `unitAmount` is in the currency's minor unit (cents). */
+export type PlanPrice = {
+    tier: PaidTier;
+    priceId: string;
+    name: string;
+    description: string | null;
+    currency: string;
+    unitAmount: number;
+    interval: "day" | "week" | "month" | "year";
+    intervalCount: number;
+    trialDays: number | null;
+};
+
+/** `prices: []` means purchases are switched off on the server. */
+export type PricesResponse = { prices: PlanPrice[] };
+export type PortalResponse = { url: string };
+
 // ─── Notifications ───────────────────────────────────────────────────────────
 export type DevicePlatform = "ios" | "android";
 export type DeviceTokenInput = { token: string; platform: DevicePlatform };
@@ -359,7 +378,7 @@ export type HealthResponse = {
     status: "ok" | "degraded";
     service?: string;
     env?: string;
-    checks?: { mongodb?: string; redis?: string };
+    checks?: { database?: string; redis?: string };
     uptime?: number;
     ts?: string;
 };

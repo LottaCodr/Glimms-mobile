@@ -1,0 +1,71 @@
+# Local development stack. In staging/production the database is Supabase
+# (set DATABASE_URL); this Postgres container is only a local stand-in that
+# runs the same migrations from supabase/migrations.
+
+services:
+  api:
+    build: .
+    container_name: glimms-api
+    ports:
+      - "4000:4000"
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/glimms
+      - DATABASE_SSL=disable
+      # Convenient for a throwaway local database. In deployed environments run
+      # `npm run db:migrate:prod` as a release step instead.
+      - DB_MIGRATE_ON_START=true
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - glimms-net
+
+  postgres:
+    # Same major version as current Supabase projects.
+    image: postgres:17-alpine
+    container_name: glimms-postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=glimms
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d glimms"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - glimms-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: glimms-redis
+    # BullMQ requires queue keys to be retained rather than evicted under memory pressure.
+    command: redis-server --appendonly yes --maxmemory-policy noeviction
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - glimms-net
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  glimms-net:
+    driver: bridge
