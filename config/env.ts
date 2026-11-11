@@ -68,10 +68,6 @@ export const ENV = {
     UPLOAD_TIMEOUT: Number(process.env.EXPO_PUBLIC_UPLOAD_TIMEOUT ?? extra.uploadTimeout) || 120000,
     API_RETRY: Number(process.env.EXPO_PUBLIC_API_RETRY ?? extra.apiRetry) || 3,
 
-    /** Stripe price IDs (guide §12 — backend has no /prices endpoint yet, so they live in env). */
-    STRIPE_PREMIUM_PRICE_ID: configuredValue(process.env.EXPO_PUBLIC_STRIPE_PREMIUM_PRICE_ID, "stripePremiumPriceId") ?? "",
-    STRIPE_PRO_PRICE_ID: configuredValue(process.env.EXPO_PUBLIC_STRIPE_PRO_PRICE_ID, "stripeProPriceId") ?? "",
-
     // Client-side mirrors of backend limits (guide §5/§8).
     SCAN_MAX_IMAGES: 5,
     SCAN_MAX_FILE_BYTES: 15 * 1024 * 1024, // 15 MB (v1 sessions)

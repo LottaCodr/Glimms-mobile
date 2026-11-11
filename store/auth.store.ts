@@ -8,6 +8,7 @@
  */
 import { create } from "zustand";
 import {
+    ApiError,
     onAuthFailure,
     refreshTokens,
     tokenStore,
@@ -78,8 +79,12 @@ export const useAuthStore = create<AuthState>((set, get) => {
                     .registerDeviceToken()
                     .then((token) => set({ pushToken: token }))
                     .catch(() => {});
-            } catch {
-                await tokenStore.clear();
+            } catch (err) {
+                // Only a rejected session is forgotten. Being offline or the API
+                // being down at launch must not sign the user out for good: the
+                // tokens stay, and the next launch restores the session.
+                const sessionRejected = err instanceof ApiError && (err.status === 401 || err.status === 403 || err.status === 404);
+                if (sessionRejected) await tokenStore.clear();
                 set({ user: null, isAuthenticated: false, isLoading: false });
             }
         },

@@ -23,7 +23,9 @@ import { Colors, Spacing, Typography } from "@/theme";
 export default function PaywallScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
-    const { plans, loading, error, subscribe } = useSubscription();
+    const { plans, plansLoading, plansError, refetchPlans, loading, error, subscribe } = useSubscription();
+    const paidPlans = plans.filter((p) => p.id !== "free");
+    const nothingForSale = !plansLoading && !plansError && !paidPlans.some((p) => p.purchasable);
     const user = useAuthStore((s) => s.user);
     const [notice, setNotice] = useState<string | null>(null);
 
@@ -57,7 +59,22 @@ export default function PaywallScreen() {
                 contentContainerStyle={[styles.scroll, { paddingBottom: 48 + insets.bottom }]}
                 showsVerticalScrollIndicator={false}
             >
-                {plans.filter((p) => p.id !== "free").map((plan) => (
+                {plansLoading && (
+                    <View style={styles.statusRow}>
+                        <ActivityIndicator color={Colors.gold} />
+                        <Text style={styles.statusText}>Loading plans…</Text>
+                    </View>
+                )}
+                {plansError && (
+                    <TouchableOpacity onPress={() => refetchPlans()} accessibilityRole="button">
+                        <Text style={styles.error}>{"Couldn't load plans. Tap to try again."}</Text>
+                    </TouchableOpacity>
+                )}
+                {nothingForSale && (
+                    <Text style={styles.notice}>{"Upgrades aren't available right now. Please check back soon."}</Text>
+                )}
+
+                {!plansLoading && !plansError && paidPlans.map((plan) => (
                     <PricingCard
                         key={plan.id}
                         plan={plan}

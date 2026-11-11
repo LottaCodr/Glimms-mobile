@@ -39,7 +39,7 @@ export default function NewProfileScreen() {
   const insets = useSafeAreaInsets()
   const { user, logout, setUser } = useAuthStore()
   const analytics = useAnalyticsSummary()
-  const { subscription } = useSubscription()
+  const { subscription, manageBilling, loading: billingLoading, error: billingError } = useSubscription()
 
   const [loggingOut, setLoggingOut] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
@@ -206,8 +206,11 @@ export default function NewProfileScreen() {
         <TouchableOpacity
           style={tier === 'free' ? styles.upgradeCard : styles.subCard}
           activeOpacity={0.85}
-          onPress={() => router.push('/paywall' as any)}
+          // Free users pick a plan; subscribers manage theirs in the Stripe portal.
+          onPress={() => (tier === 'free' ? router.push('/paywall' as any) : void manageBilling())}
+          disabled={billingLoading}
           accessibilityRole="button"
+          accessibilityLabel={tier === 'free' ? 'Upgrade your plan' : 'Manage billing'}
         >
           <View style={styles.subIconWrap}>
             <AppIcon name="diamond-outline" size={20} color={tier === 'free' ? Colors.gold : Colors.text} />
@@ -219,9 +222,11 @@ export default function NewProfileScreen() {
             <Text style={styles.upgradeSub}>
               {tier === 'free'
                 ? 'More scans · Priority AI styling'
-                : subscription?.currentPeriodEnd
-                  ? `Renews ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}`
-                  : 'Manage billing from the web dashboard'}
+                : billingError
+                  ? billingError
+                  : subscription?.currentPeriodEnd
+                  ? `${subscription.cancelAtPeriodEnd ? 'Ends' : 'Renews'} ${new Date(subscription.currentPeriodEnd).toLocaleDateString()} · Manage billing`
+                  : 'Manage billing'}
             </Text>
           </View>
           <AppIcon name="chevron-forward" size={18} color={Colors.gold} />

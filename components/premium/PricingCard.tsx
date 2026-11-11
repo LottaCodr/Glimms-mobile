@@ -13,7 +13,7 @@ interface PricingCardProps {
 
 export const PricingCard: React.FC<PricingCardProps> = ({ plan, onSelect, loading }) => {
     const isFree = plan.id === 'free';
-    const purchasable = !!plan.priceId;
+    const purchasable = plan.purchasable;
 
     return (
         <View
@@ -39,9 +39,18 @@ export const PricingCard: React.FC<PricingCardProps> = ({ plan, onSelect, loadin
             <Text style={styles.title}>{plan.name}</Text>
 
             <View style={styles.priceContainer}>
-                <Text style={styles.price}>{plan.price}</Text>
-                <Text style={styles.interval}>/{plan.interval}</Text>
+                {plan.price ? (
+                    <>
+                        <Text style={styles.price}>{plan.price}</Text>
+                        <Text style={styles.interval}>/{plan.interval}</Text>
+                    </>
+                ) : (
+                    <Text style={styles.interval}>Not available yet</Text>
+                )}
             </View>
+            {!!plan.trialDays && (
+                <Text style={styles.interval}>{plan.trialDays}-day free trial</Text>
+            )}
 
             <View style={styles.featureList}>
                 {plan.features.map((feature, index) => (
