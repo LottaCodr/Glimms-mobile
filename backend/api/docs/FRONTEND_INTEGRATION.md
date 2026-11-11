@@ -858,7 +858,7 @@ POST /api/subscriptions/webhook
    // Mobile: open with Expo WebBrowser; Web: window.location.href = data.url
    await WebBrowser.openBrowserAsync(data.url);
    ```
-4. **Return URLs** are server settings: `STRIPE_CHECKOUT_SUCCESS_URL`, `STRIPE_CHECKOUT_CANCEL_URL`, `STRIPE_PORTAL_RETURN_URL`. Point them at the app's deep links or at https pages that redirect into the app.
+4. **Return URLs** are server settings: `STRIPE_CHECKOUT_SUCCESS_URL`, `STRIPE_CHECKOUT_CANCEL_URL`, `STRIPE_PORTAL_RETURN_URL`. Point them at https pages (universal/app links, or pages that redirect into the app). The mobile app does not depend on the redirect: it polls `GET /me` when the in-app browser closes.
 5. **Webhook:** Stripe → `POST /webhook` with `Stripe-Signature`. Backend updates `Subscription` and `User.tier`. Frontend polls `GET /me` after returning from checkout (every 2s for ~15s) to detect `status:"active"`.
 6. **Manage billing:** for a subscriber, `POST /portal` and open the returned URL the same way. Refetch `GET /me` when the browser closes.
 7. **Display tier:** `GET /users/me` returns `tier`. Show badge `FREE | PREMIUM | PRO` and scan quota from `GET /analytics/me`.

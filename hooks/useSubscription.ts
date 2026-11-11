@@ -6,6 +6,7 @@
  */
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { refreshTokens } from "@/services/api.client";
 import { subscriptionService } from "@/services/subscription.service";
 import { useAuthStore } from "@/store/auth.store";
 import { buildPlans } from "@/lib/subscription/plans";
@@ -34,6 +35,9 @@ export const useSubscription = () => {
     const plans = useMemo(() => buildPlans(prices.data), [prices.data]);
 
     const refreshBilling = async () => {
+        // The access token carries the tier the API enforces scan limits with,
+        // so rotate it now rather than waiting for it to expire.
+        await refreshTokens().catch(() => null);
         await refreshUser().catch(() => {}); // tier badge updates
         qc.invalidateQueries({ queryKey: ["subscription", "me"] });
         qc.invalidateQueries({ queryKey: ["analytics", "me"] });

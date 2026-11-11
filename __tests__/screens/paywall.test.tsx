@@ -6,6 +6,8 @@ import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import PaywallScreen from "@/app/paywall";
+import { refreshTokens } from "@/services/api.client";
+import * as authApi from "@/services/auth.services";
 import { subscriptionService } from "@/services/subscription.service";
 import { useAuthStore } from "@/store/auth.store";
 import type { PlanPrice } from "@/types/api";
@@ -20,6 +22,10 @@ jest.mock("@/services/subscription.service", () => ({
         openCheckout: jest.fn(),
         waitUntilActive: jest.fn(),
     },
+}));
+jest.mock("@/services/api.client", () => ({
+    ...jest.requireActual("@/services/api.client"),
+    refreshTokens: jest.fn(async () => null),
 }));
 jest.mock("@/services/auth.services");
 jest.mock("@/services/notifications.service", () => ({ notificationService: {} }));
@@ -82,6 +88,19 @@ it("opens checkout for the chosen plan", async () => {
 
     await waitFor(() => expect(service.openCheckout).toHaveBeenCalledWith("pro"));
     await waitFor(() => expect(service.waitUntilActive).toHaveBeenCalled());
+});
+
+it("picks up the new tier once the subscription is active", async () => {
+    service.openCheckout.mockResolvedValue({ type: "opened" } as any);
+    service.waitUntilActive.mockResolvedValue({ status: "active" } as any);
+    (authApi.fetchMe as jest.Mock).mockResolvedValue({ id: "u1", tier: "pro" });
+    renderPaywall();
+
+    fireEvent.press(await screen.findByLabelText("Choose Pro plan"));
+
+    // New access token (it carries the tier used for scan limits), then the profile.
+    await waitFor(() => expect(refreshTokens).toHaveBeenCalled());
+    await waitFor(() => expect(useAuthStore.getState().user?.tier).toBe("pro"));
 });
 
 it("tells the user nothing was charged when they close checkout", async () => {

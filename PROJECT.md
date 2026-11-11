@@ -17,7 +17,7 @@ Implemented per [`backend/api/docs/FRONTEND_INTEGRATION.md`](backend/api/docs/FR
 - **Offline**: scans taken offline are queued (AsyncStorage) and auto-flushed on reconnect (`store/offlineQueue.store.ts`).
 - **Route guard** (`app/_layout.tsx`): unauthenticated users are confined to `(onboarding)`/`(auth)`; splash routes by session state. React Query provider lives in the root layout and covers every route.
 
-Config: `config/env.ts` reads `EXPO_PUBLIC_API_URL` / `EXPO_PUBLIC_WS_URL` / `EXPO_PUBLIC_STRIPE_*_PRICE_ID` (see `.env.example`). For physical devices use your LAN IP and add it to the backend `ALLOWED_ORIGINS`.
+Config: `config/env.ts` reads `EXPO_PUBLIC_API_URL` / `EXPO_PUBLIC_WS_URL` (see `.env.example`). Plans and prices come from `GET /api/subscriptions/prices`. For physical devices use your LAN IP and add it to the backend `ALLOWED_ORIGINS`.
 
 ## UI / UX System
 
@@ -55,6 +55,6 @@ Other scripts:
 
 - Auth, preferences, v1 scan/session pipeline, catalog, saved designs, subscriptions and push notifications are wired to glimms-api.
 - UI refreshed end-to-end on the dark-gold design system; emojis replaced with icons.
-- Legacy demo screens (`app/screens/style-setup.tsx`, `processing.tsx`, `results.tsx`) are still routable for UI reference but are not part of the integrated flow.
-- Known gaps (backend-side, per guide §12/§13): no `/subscriptions/prices` or `/portal` endpoints (price IDs live in env), and push tokens must be native FCM/APNs (needs a dev/prod build, not Expo Go).
-
+- `app/screens/style-setup.tsx` is part of the scan flow (opened from the scan screen). The mock-data demo screens `processing.tsx` and `results.tsx` were removed; `app/session/[id].tsx` replaces them.
+- Tests: `npm test` (Jest + jest-expo), run in CI with type check and lint.
+- Known gaps: see `docs/GAP_ANALYSIS.md`.

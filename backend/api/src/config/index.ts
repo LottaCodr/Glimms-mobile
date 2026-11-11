@@ -72,8 +72,8 @@ const schema = z.object({
   // source of what can be bought and which tier a price grants.
   STRIPE_PREMIUM_PRICE_ID:     blankAsUndefined(z.string().regex(/^price_[A-Za-z0-9]+$/, 'must be a Stripe price id (price_…)').optional()),
   STRIPE_PRO_PRICE_ID:         blankAsUndefined(z.string().regex(/^price_[A-Za-z0-9]+$/, 'must be a Stripe price id (price_…)').optional()),
-  // Where Stripe sends the user after checkout / the billing portal. Use the
-  // app's deep links (glimms://…) or https pages that redirect into the app.
+  // Where Stripe sends the user after checkout / the billing portal: https
+  // pages (universal links, or pages that redirect into the app).
   STRIPE_CHECKOUT_SUCCESS_URL: blankAsUndefined(z.string().default('https://app.glimms.ai/dashboard?upgrade=success')),
   STRIPE_CHECKOUT_CANCEL_URL:  blankAsUndefined(z.string().default('https://app.glimms.ai/upgrade?cancelled=true')),
   STRIPE_PORTAL_RETURN_URL:    blankAsUndefined(z.string().default('https://app.glimms.ai/dashboard')),

@@ -56,9 +56,8 @@ app's TypeScript, ESLint, Metro and EAS build (`.easignore`).
 - **Onboarding / Setup**
   - `app/index.tsx`: initial entry / splash
   - `app/(onboarding)`: onboarding flow
-  - `app/screens/style-setup.tsx`: collect weather, occasion, color preferences, vibe
-  - `app/screens/processing.tsx`: shows progress while generating recommendations
-  - `app/screens/results.tsx`: displays suggested outfits and actions
+  - `app/screens/style-setup.tsx`: occasion, vibe and colour mood, opened from the scan screen
+  - `app/session/[id].tsx`: live progress and results for a scan
 
 - **Main Tabs** (`app/(tabs)`)
   - `home.tsx`: hero recommendations, trending styles
@@ -122,6 +121,8 @@ For some additional implementation notes, see `PROJECT.md`.
 - `npm run ios` – run the app on iOS
 - `npm run web` – run the app in a web browser
 - `npm run lint` – run ESLint on the project
+- `npm test` – run the Jest test suite
+- `npm run typecheck` – TypeScript check
 - `npm run reset-project` – reset to a fresh Expo project template (use with caution)
 
 ---
@@ -172,9 +173,11 @@ eas submit --platform android      # Google Play (needs a service account key)
 ```
 
 Before submitting, also complete the store listing requirements (screenshots,
-privacy policy URL, content ratings) and set real Stripe price IDs via
-`EXPO_PUBLIC_STRIPE_PREMIUM_PRICE_ID` / `EXPO_PUBLIC_STRIPE_PRO_PRICE_ID`
-(or the matching `extra` values in `app.json`).
+privacy policy URL, content ratings). Plans and prices are served by the API
+(`GET /api/subscriptions/prices`); set `STRIPE_PREMIUM_PRICE_ID` and
+`STRIPE_PRO_PRICE_ID` on the API, not in the app.
+
+Open gaps are tracked in [`docs/GAP_ANALYSIS.md`](docs/GAP_ANALYSIS.md).
 
 ---
 
