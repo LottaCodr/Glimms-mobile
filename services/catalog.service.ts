@@ -5,7 +5,15 @@
  * `imageUrl` (900s TTL). If an image 403s (expired URL), refetch via getImageUrl.
  */
 import { apiClient } from "./api.client";
-import type { CatalogFilters, CatalogItem, CatalogItemInput, Paginated, Vertical } from "@/types/api";
+import type {
+    CatalogFilters,
+    CatalogItem,
+    CatalogItemInput,
+    Paginated,
+    SimilarItemsResponse,
+    SimilarityMode,
+    Vertical,
+} from "@/types/api";
 
 const PAGE_SIZE = 20;
 
@@ -32,6 +40,17 @@ export const catalogService = {
 
     async get(id: string): Promise<CatalogItem> {
         const { data } = await apiClient.get<CatalogItem>(`/api/catalog/${id}`);
+        return data;
+    },
+
+    /**
+     * The user's own items that look like this one (`similar`) or that match it
+     * from other categories (`pairs`).
+     */
+    async similar(id: string, mode: SimilarityMode = "similar", limit = 6): Promise<SimilarItemsResponse> {
+        const { data } = await apiClient.get<SimilarItemsResponse>(`/api/catalog/${id}/similar`, {
+            params: { mode, limit },
+        });
         return data;
     },
 

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { catalogService } from '../services/catalog.service';
+import { similarityService } from '../services/similarity.service';
 import { requireAuth, AuthRequest } from '../middleware/auth.middleware';
 import { validateBody, validateQuery } from '../middleware/validate.middleware';
 
@@ -61,6 +62,18 @@ router.get('/:id/url', requireAuth, async (req: AuthRequest, res) => {
   res.json({ url });
 });
 
+const similarQuerySchema = z.object({
+  mode:  z.enum(['similar', 'pairs']).default('similar'),
+  limit: z.coerce.number().int().min(1).max(20).default(6),
+});
+
+// GET /api/catalog/:id/similar — the user's own items that look like this one
+// (mode=similar) or that match it from other categories (mode=pairs).
+router.get('/:id/similar', requireAuth, validateQuery(similarQuerySchema), async (req: AuthRequest, res) => {
+  const { mode, limit } = (req as any).validatedQuery;
+  res.json(await similarityService.forItem(req.params.id, req.user!.sub, { mode, limit }));
+});
+
 // POST /api/catalog
 router.post('/', requireAuth, validateBody(createItemSchema), async (req: AuthRequest, res) => {
   const item = await catalogService.create(req.user!.sub, req.body);
@@ -75,7 +88,9 @@ router.patch('/:id', requireAuth, validateBody(updateItemSchema), async (req: Au
 
 // DELETE /api/catalog/:id
 router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
+  const item = await catalogService.findOne(req.params.id, req.user!.sub);
   const result = await catalogService.remove(req.params.id, req.user!.sub);
+  void similarityService.forget(item); // not awaited: the item is already gone for the user
   res.json(result);
 });
 

@@ -86,6 +86,20 @@ export type CatalogItem = {
     thumbnailUrl?: string | null;
 };
 
+/** A catalog item returned by a visual-similarity search. */
+export type SimilarCatalogItem = CatalogItem & {
+    /** Cosine similarity of the two items' style vectors, 0–1. */
+    similarity: number;
+};
+
+export type SimilarityMode = "similar" | "pairs";
+
+export type SimilarItemsResponse = {
+    /** False when the item has no style vector to compare (e.g. added by hand). */
+    available: boolean;
+    items: SimilarCatalogItem[];
+};
+
 export type CatalogFilters = {
     vertical?: Vertical;
     category?: string;

@@ -27,6 +27,8 @@ import { Colors, Radius } from '@/theme';
 import { AppIcon } from '@/components/ui/Icon';
 import type { LocalImage } from '@/services/sessions.service';
 import type { Vertical } from '@/types/api';
+import { checkPhoto, type PhotoInfo } from '@/lib/vision/photoCheck';
+import { toast } from '@/store/toast.store';
 
 type Stage = 'idle' | 'creating' | 'uploading' | 'queuing';
 
@@ -46,14 +48,19 @@ export default function ScanScreen() {
   const limit = quota?.limit ?? ENV.SCAN_LIMITS[user?.tier ?? 'free'] ?? 10;
   const used = quota?.used ?? 0;
 
-  const addPhoto = (img: LocalImage) =>
+  /** Adds a photo unless the server would reject it; warns when results may be poor. */
+  const addPhoto = (img: LocalImage, size: PhotoInfo = {}) => {
+    const check = checkPhoto({ ...size, fileSize: img.fileSize }, ENV.SCAN_MAX_FILE_BYTES);
+    if (check.severity === 'block') return toast.error(check.message!);
+    if (check.severity === 'warn') toast.info(check.message!);
     setPhotos((prev) => (prev.length >= ENV.SCAN_MAX_IMAGES ? prev : [...prev, img]));
+  };
 
   const capture = async () => {
     if (!cameraRef.current || busy || photos.length >= ENV.SCAN_MAX_IMAGES) return;
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const photo = await cameraRef.current.takePictureAsync({ quality: 0.9 });
-    if (photo) addPhoto({ uri: photo.uri, mimeType: 'image/jpeg' });
+    if (photo) addPhoto({ uri: photo.uri, mimeType: 'image/jpeg' }, { width: photo.width, height: photo.height });
   };
 
   const pickFromGallery = async () => {
@@ -68,7 +75,10 @@ export default function ScanScreen() {
     });
     if (result.canceled) return;
     result.assets.forEach((a) =>
-      addPhoto({ uri: a.uri, mimeType: a.mimeType ?? null, fileName: a.fileName, fileSize: a.fileSize }),
+      addPhoto(
+        { uri: a.uri, mimeType: a.mimeType ?? null, fileName: a.fileName, fileSize: a.fileSize },
+        { width: a.width, height: a.height },
+      ),
     );
   };
 
