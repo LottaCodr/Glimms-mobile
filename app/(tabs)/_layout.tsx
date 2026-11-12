@@ -1,5 +1,6 @@
 import React, { useEffect, useCallback } from 'react'
-import { View, TouchableOpacity, StyleSheet } from 'react-native'
+import { View, StyleSheet } from 'react-native'
+import { Touchable } from '@/components/motion'
 import { Tabs } from 'expo-router'
 import type { BottomTabBarProps } from 'expo-router/build/react-navigation/bottom-tabs'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -118,7 +119,7 @@ function ScanFab({ onPress }: ScanFabProps) {
       {/* Outer glow ring */}
       <View style={tabStyles.fabRing} />
       {/* FAB button */}
-      <TouchableOpacity
+      <Touchable
         onPress={handlePress}
         activeOpacity={1}
         style={tabStyles.fabTouchable}
@@ -126,7 +127,7 @@ function ScanFab({ onPress }: ScanFabProps) {
         <Animated.View style={[tabStyles.fab, fabStyle]}>
           <Ionicons name="camera" size={24} color="#000" />
         </Animated.View>
-      </TouchableOpacity>
+      </Touchable>
     </View>
   )
 }
@@ -169,14 +170,14 @@ export function GlimmsTabBar({ state, navigation }: BottomTabBarProps) {
 
           // ── Regular tab ──
           return (
-            <TouchableOpacity
+            <Touchable
               key={route.key}
               onPress={() => handleTabPress(route.key, route.name, focused)}
               activeOpacity={1}
               style={tabStyles.tab}
             >
               <TabIcon tab={tab as RegularTab} focused={focused} />
-            </TouchableOpacity>
+            </Touchable>
           )
         })}
       </View>

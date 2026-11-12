@@ -547,3 +547,88 @@ def test_model_resolution_precedence(tmp_path, monkeypatch):
     assert resolve_model("SOME_MODEL", "m.onnx") is None
     monkeypatch.setenv("SOME_MODEL", str(tmp_path / "missing.onnx"))
     assert resolve_model("SOME_MODEL", "m.onnx") is None
+
+
+# -- deleting an owner's vectors ---------------------------------------------
+
+
+def test_memory_store_deletes_only_the_owners_vectors():
+    from services.embedding_engine.app.store import EmbeddingStore
+
+    store = EmbeddingStore()
+    store.upsert(
+        [
+            ("u1:shirt", [1.0, 0.0], {"user_id": "u1"}),
+            ("legacy-id", [1.0, 0.0], {"user_id": "u1"}),  # found by metadata, not prefix
+            ("u2:shirt", [1.0, 0.0], {"user_id": "u2"}),
+            ("u10:shirt", [1.0, 0.0], {"user_id": "u10"}),  # shares "u1" as a string prefix
+        ]
+    )
+
+    assert store.delete_owner("u1") == 2
+    remaining = {match["id"] for match in store.search([1.0, 0.0], top_k=10)}
+    assert remaining == {"u2:shirt", "u10:shirt"}
+
+
+class _ServerlessIndex(_FakeIndex):
+    """Lists ids by prefix; refuses metadata deletes (as serverless Pinecone does)."""
+
+    def __init__(self, ids):
+        super().__init__()
+        self.ids = ids
+
+    def list(self, prefix, namespace):
+        matching = [identifier for identifier in self.ids if identifier.startswith(prefix)]
+        for start in range(0, len(matching), 2):
+            yield matching[start : start + 2]
+
+    def delete(self, **kwargs):
+        if "filter" in kwargs:
+            raise RuntimeError("serverless indexes do not support delete by metadata")
+        super().delete(**kwargs)
+
+
+class _PodIndex(_FakeIndex):
+    """Deletes by metadata; cannot list ids (as pod-based Pinecone does)."""
+
+    def list(self, prefix, namespace):
+        raise RuntimeError("list is not supported for pod indexes")
+
+
+def _store_with(index):
+    from services.embedding_engine.app.store import EmbeddingStore
+
+    store = EmbeddingStore()
+    store._remote, store._remote_attempted = index, True
+    return store
+
+
+def test_pinecone_serverless_owner_delete_pages_through_the_id_prefix():
+    index = _ServerlessIndex(["u1:a", "u1:b", "u1:c", "u2:a", "u10:a"])
+    assert _store_with(index).delete_owner("u1", namespace="items") == 3
+    assert index.deletes == [
+        {"ids": ["u1:a", "u1:b"], "namespace": "items"},
+        {"ids": ["u1:c"], "namespace": "items"},
+    ]
+
+
+def test_pinecone_pod_owner_delete_uses_the_metadata_filter():
+    index = _PodIndex()
+    assert _store_with(index).delete_owner("u1", namespace="items") is None
+    assert index.deletes == [{"filter": {"user_id": "u1"}, "namespace": "items"}]
+
+
+def test_owner_delete_fails_when_the_index_supports_neither_method():
+    class _Broken(_PodIndex):
+        def delete(self, **kwargs):
+            raise RuntimeError("unavailable")
+
+    with pytest.raises(RuntimeError):
+        _store_with(_Broken()).delete_owner("u1")
+
+
+def test_owner_delete_rejects_an_empty_owner():
+    from services.embedding_engine.app.store import EmbeddingStore
+
+    with pytest.raises(ValueError):
+        EmbeddingStore().delete_owner("  ")

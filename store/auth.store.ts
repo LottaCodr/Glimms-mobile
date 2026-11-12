@@ -24,12 +24,16 @@ interface AuthState {
     /** True while the initial session is being restored. */
     isLoading: boolean;
     isAuthenticated: boolean;
-    /** FCM/APNs token registered for this device (for logout cleanup). */
+    /** Expo push token registered for this device (for logout cleanup). */
     pushToken: string | null;
 
     hydrateAuth: () => Promise<void>;
     login: (email: string, password: string) => Promise<void>;
     register: (email: string, password: string, name?: string) => Promise<void>;
+    signInWithGoogle: (idToken: string) => Promise<void>;
+    signInWithApple: (identityToken: string, name?: string) => Promise<void>;
+    /** Permanently deletes the account, then clears the local session. Throws if the server refuses. */
+    deleteAccount: () => Promise<void>;
     setUser: (user: User | null) => void;
     refreshUser: () => Promise<void>;
     logout: () => Promise<void>;
@@ -101,6 +105,29 @@ export const useAuthStore = create<AuthState>((set, get) => {
             await tokenStore.save(tokens);
             await afterTokens();
             analyticsService.track("register", { method: "email" });
+        },
+
+        signInWithGoogle: async (idToken) => {
+            const tokens = await authApi.signInWithGoogle(idToken);
+            await tokenStore.save(tokens);
+            await afterTokens();
+            analyticsService.track("login", { method: "google" });
+        },
+
+        signInWithApple: async (identityToken, name) => {
+            const tokens = await authApi.signInWithApple(identityToken, name);
+            await tokenStore.save(tokens);
+            await afterTokens();
+            analyticsService.track("login", { method: "apple" });
+        },
+
+        deleteAccount: async () => {
+            // The server call comes first and must succeed: signing out locally
+            // after a failed deletion would look like the account was removed.
+            await authApi.deleteAccount();
+            wsService.disconnect();
+            await tokenStore.clear();
+            set({ user: null, isAuthenticated: false, pushToken: null });
         },
 
         setUser: (user) => set({ user, isAuthenticated: !!user }),

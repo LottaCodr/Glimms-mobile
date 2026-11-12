@@ -10,9 +10,10 @@ import { refreshTokens } from "@/services/api.client";
 import { subscriptionService } from "@/services/subscription.service";
 import { useAuthStore } from "@/store/auth.store";
 import { buildPlans } from "@/lib/subscription/plans";
+import type { PaidTier } from "@/types/api";
 
 export type { SubscriptionPlan } from "@/lib/subscription/plans";
-export type SubscribeResult = "active" | "pending" | "cancelled" | "idle";
+export type SubscribeResult = "active" | "pending" | "cancelled" | "failed" | "idle";
 
 export const useSubscription = () => {
     const [loading, setLoading] = useState(false);
@@ -29,6 +30,13 @@ export const useSubscription = () => {
     const prices = useQuery({
         queryKey: ["subscription", "prices"],
         queryFn: () => subscriptionService.prices(),
+        staleTime: 5 * 60_000,
+    });
+
+    // Naira passes (Credo). Failing to load them only hides that option.
+    const credo = useQuery({
+        queryKey: ["subscription", "credo-plans"],
+        queryFn: () => subscriptionService.credoPlans().catch(() => []),
         staleTime: 5 * 60_000,
     });
 
@@ -80,6 +88,36 @@ export const useSubscription = () => {
         }
     };
 
+    /**
+     * Pays for a naira pass through Credo (card or bank transfer). The API
+     * checks the payment with Credo; the browser's word is never taken for it.
+     */
+    const payWithCredo = async (tier: PaidTier): Promise<SubscribeResult> => {
+        setLoading(true);
+        setError(null);
+        try {
+            const { reference, result } = await subscriptionService.openCredoCheckout(tier);
+            const closedByUser = result.type === "cancel" || result.type === "dismiss";
+            // A closed browser may still be a finished payment (bank transfers
+            // especially), so always ask; just don't wait long if they bailed.
+            const status = closedByUser
+                ? await subscriptionService.confirmCredo(reference)
+                : await subscriptionService.waitForCredo(reference);
+
+            if (status === "paid") {
+                await refreshBilling();
+                return "active";
+            }
+            if (status === "failed") return "failed";
+            return closedByUser ? "cancelled" : "pending";
+        } catch (e: any) {
+            setError(e?.message ?? "Payment could not be started — please try again.");
+            return "idle";
+        } finally {
+            setLoading(false);
+        }
+    };
+
     /** Opens the Stripe billing portal, then picks up whatever changed there. Resolves false on failure. */
     const manageBilling = async (): Promise<boolean> => {
         setLoading(true);
@@ -104,6 +142,9 @@ export const useSubscription = () => {
         loading,
         error,
         subscribe,
+        payWithCredo,
+        credoPlans: credo.data ?? [],
+        refreshBilling,
         manageBilling,
         subscription: subscription.data ?? null,
         subscriptionLoading: subscription.isLoading,

@@ -4,14 +4,22 @@
  * - Preferences editor (/preferences) ↔ PUT on /api/users/me/preferences
  * - Subscription card → paywall
  * - Sign out (POST /api/auth/logout + token/device cleanup)
- * - Deactivate account (DELETE /api/users/me, double-confirm)
+ * - Delete account (DELETE /api/users/me, permanent, double-confirm)
  */
 import React, { useState } from 'react'
 import {
-  View, Text, StyleSheet, TouchableOpacity, TextInput,
-  ScrollView, Alert, ActivityIndicator, Modal,
-  KeyboardAvoidingView, Platform,
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  ScrollView,
+  Alert,
+  ActivityIndicator,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native'
+import { CountUp, Enter, Pop, Touchable } from '@/components/motion'
 import { Image } from 'expo-image'
 import { useRouter } from 'expo-router'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -23,6 +31,8 @@ import { useAnalyticsSummary } from '@/hooks/useDesigns'
 import { useSubscription } from '@/hooks/useSubscription'
 import { userService } from '@/services/user.service'
 import { toast } from '@/store/toast.store'
+import { ApiError } from '@/services/api.client'
+import { resendVerification } from '@/services/auth.services'
 
 const TIER_LABEL: Record<string, string> = { free: 'FREE', premium: 'PREMIUM', pro: 'PRO' }
 
@@ -37,7 +47,7 @@ type MenuItem = {
 export default function NewProfileScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
-  const { user, logout, setUser } = useAuthStore()
+  const { user, logout, setUser, deleteAccount, refreshUser } = useAuthStore()
   const analytics = useAnalyticsSummary()
   const { subscription, manageBilling, loading: billingLoading, error: billingError } = useSubscription()
 
@@ -88,27 +98,66 @@ export default function NewProfileScreen() {
       },
     ])
 
-  const onDeactivate = () =>
+  const [deleting, setDeleting] = useState(false)
+
+  const deleteNow = async () => {
+    setDeleting(true)
+    try {
+      await deleteAccount()
+      router.replace('/(onboarding)/welcome')
+    } catch (e) {
+      setDeleting(false)
+      // Nothing was deleted: say so, and keep the user signed in.
+      const billing = e instanceof ApiError && e.code === 'BILLING_UNAVAILABLE'
+      Alert.alert(
+        'Account not deleted',
+        billing
+          ? "We couldn't cancel your subscription just now, so nothing was deleted. Please try again in a few minutes."
+          : e instanceof ApiError && e.isNetworkError
+            ? "We couldn't reach the server, so nothing was deleted. Check your connection and try again."
+            : 'Something went wrong and nothing was deleted. Please try again.',
+      )
+    }
+  }
+
+  const onDeleteAccount = () =>
     Alert.alert(
-      'Deactivate account?',
-      'Your designs and catalog will be hidden. This signs you out immediately.',
+      'Delete your account?',
+      'This permanently deletes your account, photos, wardrobe, saved looks and preferences, and cancels any subscription. It cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Deactivate',
+          text: 'Continue',
           style: 'destructive',
-          onPress: async () => {
-            try {
-              await userService.deactivate()
-            } catch {
-              // Even if the call fails we sign out locally.
-            }
-            await logout()
-            router.replace('/(onboarding)/welcome')
-          },
+          onPress: () =>
+            Alert.alert('Delete everything?', 'This is your last chance to keep your account.', [
+              { text: 'Keep my account', style: 'cancel' },
+              { text: 'Delete forever', style: 'destructive', onPress: () => void deleteNow() },
+            ]),
         },
       ],
     )
+
+  const [resending, setResending] = useState(false)
+  const onResendVerification = async () => {
+    if (resending) return
+    setResending(true)
+    try {
+      const { alreadyVerified } = await resendVerification()
+      if (alreadyVerified) {
+        await refreshUser().catch(() => {})
+        toast.success('Your email is already confirmed')
+      } else {
+        toast.success('Confirmation email sent — check your inbox')
+      }
+    } catch (e) {
+      toast.error(e instanceof ApiError && e.status === 429
+        ? 'Please wait a few minutes before asking again'
+        : "Couldn't send the email — please try again")
+    } finally {
+      setResending(false)
+    }
+  }
 
   const initial = (user?.name ?? user?.email ?? 'G').charAt(0).toUpperCase()
   const cityCountry = prefsData?.location
@@ -116,6 +165,8 @@ export default function NewProfileScreen() {
     : null
 
   const tier = user?.tier ?? 'free'
+  /** A naira pass bought through Credo: fixed period, no renewal, no Stripe portal. */
+  const isPass = subscription?.provider === 'credo'
   const styleChips = [...(prefsData?.styleGoals ?? []), ...(prefsData?.occasions ?? [])].slice(0, 3)
 
   const MENU: MenuItem[] = [
@@ -155,9 +206,11 @@ export default function NewProfileScreen() {
           {user?.avatarUrl ? (
             <Image source={{ uri: user.avatarUrl }} style={styles.avatarImg} contentFit="cover" />
           ) : (
-            <View style={styles.avatar}>
-              <Text style={styles.avatarLetter}>{initial}</Text>
-            </View>
+            <Pop>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarLetter}>{initial}</Text>
+              </View>
+            </Pop>
           )}
           <Text style={styles.name}>{user?.name ?? 'Glimms user'}</Text>
           <Text style={styles.email}>{user?.email}</Text>
@@ -183,6 +236,27 @@ export default function NewProfileScreen() {
           </View>
         </View>
 
+        {/* Unconfirmed email */}
+        {!!user && user.emailVerifiedAt === null && (
+          <Enter index={1}>
+            <Touchable
+              style={styles.verifyCard}
+              onPress={onResendVerification}
+              disabled={resending}
+              accessibilityRole="button"
+              accessibilityLabel="Confirm your email. Resend the confirmation email."
+            >
+              <AppIcon name="mail-unread-outline" size={18} color={Colors.gold} />
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.verifyTitle}>Confirm your email</Text>
+                <Text style={styles.verifySub}>
+                  {resending ? 'Sending…' : 'We sent a link to your inbox. Tap to send it again.'}
+                </Text>
+              </View>
+            </Touchable>
+          </Enter>
+        )}
+
         {/* Stats (GET /api/analytics/me) */}
         <View style={styles.statsRow}>
           {([
@@ -195,7 +269,7 @@ export default function NewProfileScreen() {
               {s.v === undefined ? (
                 <ActivityIndicator size="small" color={Colors.gold} style={{ marginVertical: 4 }} />
               ) : (
-                <Text style={styles.statValue}>{s.v}</Text>
+                <CountUp value={s.v} style={styles.statValue} />
               )}
               <Text style={styles.statLabel}>{s.l}</Text>
             </View>
@@ -203,14 +277,15 @@ export default function NewProfileScreen() {
         </View>
 
         {/* Subscription */}
-        <TouchableOpacity
+        <Touchable
           style={tier === 'free' ? styles.upgradeCard : styles.subCard}
           activeOpacity={0.85}
-          // Free users pick a plan; subscribers manage theirs in the Stripe portal.
-          onPress={() => (tier === 'free' ? router.push('/paywall' as any) : void manageBilling())}
+          // Free users pick a plan; card subscribers manage theirs in the Stripe
+          // portal; a naira pass is extended by buying another.
+          onPress={() => (tier === 'free' || isPass ? router.push('/paywall' as any) : void manageBilling())}
           disabled={billingLoading}
           accessibilityRole="button"
-          accessibilityLabel={tier === 'free' ? 'Upgrade your plan' : 'Manage billing'}
+          accessibilityLabel={tier === 'free' ? 'Upgrade your plan' : isPass ? 'Extend your plan' : 'Manage billing'}
         >
           <View style={styles.subIconWrap}>
             <AppIcon name="diamond-outline" size={20} color={tier === 'free' ? Colors.gold : Colors.text} />
@@ -225,18 +300,18 @@ export default function NewProfileScreen() {
                 : billingError
                   ? billingError
                   : subscription?.currentPeriodEnd
-                  ? `${subscription.cancelAtPeriodEnd ? 'Ends' : 'Renews'} ${new Date(subscription.currentPeriodEnd).toLocaleDateString()} · Manage billing`
+                  ? `${subscription.cancelAtPeriodEnd ? 'Ends' : 'Renews'} ${new Date(subscription.currentPeriodEnd).toLocaleDateString()} · ${isPass ? 'Extend' : 'Manage billing'}`
                   : 'Manage billing'}
             </Text>
           </View>
           <AppIcon name="chevron-forward" size={18} color={Colors.gold} />
-        </TouchableOpacity>
+        </Touchable>
 
         {/* Menu */}
         <View style={styles.menu}>
-          {MENU.map((item) => (
-            <TouchableOpacity
-              key={item.label}
+          {MENU.map((item, enterIdx) => (
+            <Touchable
+              key={item.label} enterIndex={enterIdx}
               style={styles.menuItem}
               activeOpacity={0.7}
               onPress={item.onPress}
@@ -250,9 +325,9 @@ export default function NewProfileScreen() {
                 {item.info ? <Text style={styles.menuInfo}>{item.info}</Text> : null}
               </View>
               <AppIcon name="chevron-forward" size={16} color={Colors.mid} />
-            </TouchableOpacity>
+            </Touchable>
           ))}
-          <TouchableOpacity
+          <Touchable
             style={styles.menuItem}
             activeOpacity={0.7}
             onPress={onLogout}
@@ -265,13 +340,13 @@ export default function NewProfileScreen() {
             <Text style={[styles.menuLabel, { color: Colors.error, flex: 1 }]}>
               {loggingOut ? 'Signing out…' : 'Sign Out'}
             </Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={onDeactivate} accessibilityRole="button">
+          </Touchable>
+          <Touchable style={styles.menuItem} activeOpacity={0.7} onPress={onDeleteAccount} disabled={deleting} accessibilityRole="button">
             <View style={[styles.menuIconWrap, styles.menuIconDanger]}>
               <AppIcon name="alert-circle-outline" size={17} color={Colors.error} />
             </View>
-            <Text style={[styles.menuLabel, { color: Colors.error, flex: 1 }]}>Deactivate account</Text>
-          </TouchableOpacity>
+            <Text style={[styles.menuLabel, { color: Colors.error, flex: 1 }]}>{deleting ? 'Deleting…' : 'Delete account'}</Text>
+          </Touchable>
         </View>
       </ScrollView>
 
@@ -294,13 +369,13 @@ export default function NewProfileScreen() {
               onSubmitEditing={saveName}
             />
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
-              <TouchableOpacity
+              <Touchable
                 style={[styles.modalBtn, { backgroundColor: Colors.card2 }]}
                 onPress={() => setEditOpen(false)}
               >
                 <Text style={{ color: Colors.mid, fontWeight: '600' }}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
+              </Touchable>
+              <Touchable
                 style={[styles.modalBtn, { backgroundColor: Colors.gold }]}
                 onPress={saveName}
                 disabled={saving}
@@ -310,7 +385,7 @@ export default function NewProfileScreen() {
                 ) : (
                   <Text style={{ color: Colors.black, fontWeight: '700' }}>Save</Text>
                 )}
-              </TouchableOpacity>
+              </Touchable>
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -417,4 +492,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md, color: Colors.text, fontSize: 14,
   },
   modalBtn: { flex: 1, height: 44, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
+  verifyCard: {
+    flexDirection: 'row', alignItems: 'center', padding: 14, marginBottom: Spacing.md,
+    borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.gold, backgroundColor: 'rgba(191,146,69,0.08)',
+  },
+  verifyTitle: { color: Colors.text, fontWeight: '700', fontSize: 14 },
+  verifySub: { color: Colors.mid, fontSize: 12, marginTop: 2 },
 })

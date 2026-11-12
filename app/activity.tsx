@@ -9,9 +9,9 @@ import {
     RefreshControl,
     StyleSheet,
     Text,
-    TouchableOpacity,
     View,
 } from "react-native";
+import { Touchable } from "@/components/motion";
 import { useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useInfiniteQuery } from "@tanstack/react-query";
@@ -42,13 +42,14 @@ function metaFor(status: SessionStatus) {
     );
 }
 
-function SessionRow({ session }: { session: DesignSession }) {
+function SessionRow({ session, enterIndex }: { session: DesignSession; enterIndex?: number }) {
     const router = useRouter();
     const meta = metaFor(session.status);
     const designCount = session.designs?.length ?? 0;
 
     return (
-        <TouchableOpacity
+        <Touchable
+      enterIndex={enterIndex}
             style={styles.row}
             activeOpacity={0.8}
             onPress={() => router.push(`/session/${session.session_id}` as any)}
@@ -74,7 +75,7 @@ function SessionRow({ session }: { session: DesignSession }) {
                 </View>
             )}
             <AppIcon name="chevron-forward" size={16} color={Colors.mid} />
-        </TouchableOpacity>
+        </Touchable>
     );
 }
 
@@ -114,7 +115,7 @@ export default function ActivityScreen() {
                     if (query.hasNextPage && !query.isFetchingNextPage) query.fetchNextPage();
                 }}
                 onEndReachedThreshold={0.4}
-                renderItem={({ item }) => <SessionRow session={item} />}
+                renderItem={({ item, index }) => <SessionRow session={item} enterIndex={index} />}
                 ListEmptyComponent={
                     query.isLoading ? (
                         <View style={{ gap: 10 }}>

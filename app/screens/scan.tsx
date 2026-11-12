@@ -2,12 +2,12 @@ import React, { useRef, useState } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
   StyleSheet,
   Alert,
   ActivityIndicator,
   ScrollView,
 } from 'react-native';
+import { ProgressBar, Touchable } from '@/components/motion';
 import { Image } from 'expo-image';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
@@ -144,15 +144,15 @@ export default function ScanScreen() {
     return (
       <View style={styles.center}>
         <Text style={styles.permText}>Camera access needed</Text>
-        <TouchableOpacity style={styles.permBtn} onPress={requestPermission}>
+        <Touchable style={styles.permBtn} onPress={requestPermission}>
           <Text style={styles.permBtnText}>Grant Permission</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
+        </Touchable>
+        <Touchable
           style={[styles.permBtn, { backgroundColor: Colors.card, marginTop: 10 }]}
           onPress={pickFromGallery}
         >
           <Text style={styles.permBtnText}>Pick from gallery</Text>
-        </TouchableOpacity>
+        </Touchable>
       </View>
     );
   }
@@ -163,9 +163,9 @@ export default function ScanScreen() {
       <View style={[styles.overlay, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 24 }]}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn} accessibilityLabel="Close">
+          <Touchable onPress={() => router.back()} style={styles.closeBtn} accessibilityLabel="Close">
             <AppIcon name="close" size={18} color="#fff" />
-          </TouchableOpacity>
+          </Touchable>
           <View style={styles.badge}>
             <Text style={styles.badgeText}>{(vertical as string).toUpperCase()} SCAN</Text>
           </View>
@@ -178,7 +178,7 @@ export default function ScanScreen() {
 
         {/* Occasion/context shortcut */}
         <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 10 }}>
-          <TouchableOpacity
+          <Touchable
             onPress={() => !busy && router.push({ pathname: '/screens/style-setup' as any, params: { vertical: vertical as string } })}
             style={styles.occasionChip}
             accessibilityLabel="Change style context"
@@ -187,7 +187,7 @@ export default function ScanScreen() {
             <AppIcon name="options-outline" size={12} color={Colors.cream} />
             <Text style={styles.occasionChipText}>{context.occasion}</Text>
             <AppIcon name="chevron-down" size={11} color={Colors.mid} />
-          </TouchableOpacity>
+          </Touchable>
         </View>
 
         {/* Guide Box or capture tray */}
@@ -210,16 +210,16 @@ export default function ScanScreen() {
                     </View>
                   )}
                   {!busy && (
-                    <TouchableOpacity style={styles.thumbRemove} onPress={() => removePhoto(i)} accessibilityLabel="Remove photo">
+                    <Touchable style={styles.thumbRemove} onPress={() => removePhoto(i)} accessibilityLabel="Remove photo">
                       <AppIcon name="close" size={11} color="#fff" />
-                    </TouchableOpacity>
+                    </Touchable>
                   )}
                 </View>
               ))}
               {photos.length < ENV.SCAN_MAX_IMAGES && !busy && (
-                <TouchableOpacity style={styles.thumbAdd} onPress={capture} accessibilityLabel="Add another photo">
+                <Touchable style={styles.thumbAdd} onPress={capture} accessibilityLabel="Add another photo">
                   <AppIcon name="add" size={22} color="#fff" />
-                </TouchableOpacity>
+                </Touchable>
               )}
             </ScrollView>
             <Text style={styles.trayHint}>
@@ -232,16 +232,16 @@ export default function ScanScreen() {
         <View style={styles.footer}>
           <Text style={styles.hint}>Good lighting · Fill the frame · Avoid clutter</Text>
           <View style={styles.actionsRow}>
-            <TouchableOpacity
+            <Touchable
               onPress={pickFromGallery}
               disabled={busy}
               style={styles.sideBtn}
               activeOpacity={0.8}
             >
               <AppIcon name="images-outline" size={20} color="#fff" />
-            </TouchableOpacity>
+            </Touchable>
 
-            <TouchableOpacity
+            <Touchable
               onPress={photos.length ? generate : capture}
               disabled={busy}
               style={styles.shutterBtn}
@@ -254,7 +254,7 @@ export default function ScanScreen() {
               ) : (
                 <View style={styles.shutterInner} />
               )}
-            </TouchableOpacity>
+            </Touchable>
 
             <View style={[styles.sideBtn, { opacity: 0.35 }]}>
               <Text style={{ fontSize: 16, color: '#fff' }}>{photos.length}</Text>
@@ -285,18 +285,11 @@ export default function ScanScreen() {
             </Text>
             {stage === 'uploading' && uploadProgress.length > 0 && (
               <>
-                <View style={styles.veilTrack}>
-                  <View
-                    style={[
-                      styles.veilFill,
-                      {
-                        width: `${Math.round(
-                          (uploadProgress.reduce((a, b) => a + b, 0) / uploadProgress.length) * 100,
-                        )}%`,
-                      },
-                    ]}
-                  />
-                </View>
+                <ProgressBar
+                  progress={uploadProgress.reduce((a, b) => a + b, 0) / uploadProgress.length}
+                  style={styles.veilTrack}
+                  accessibilityLabel="Upload progress"
+                />
                 <Text style={styles.veilMeta}>
                   {uploadProgress.filter((p) => p >= 1).length}/{uploadProgress.length} photos uploaded
                 </Text>

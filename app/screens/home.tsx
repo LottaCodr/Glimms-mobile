@@ -5,9 +5,13 @@
  */
 import React from 'react'
 import {
-  View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, RefreshControl,
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  RefreshControl,
 } from 'react-native'
+import { Enter, Touchable } from '@/components/motion'
 import { Image } from 'expo-image'
 import { useRouter } from 'expo-router'
 import { LinearGradient } from 'expo-linear-gradient'
@@ -84,7 +88,7 @@ export default function NewHomeScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.greeting}>{greetingForHour()}</Text>
+            <Enter><Text style={styles.greeting}>{greetingForHour()}</Text></Enter>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Text style={styles.userName}>{firstName}</Text>
               <AppIcon name={Icons.sparkle} size={16} color={Colors.gold} />
@@ -107,7 +111,7 @@ export default function NewHomeScreen() {
         </View>
 
         {/* Style me CTA */}
-        <TouchableOpacity
+        <Touchable
           onPress={() => router.push('/screens/scan' as any)}
           activeOpacity={0.85}
           style={styles.styleMeCta}
@@ -125,7 +129,7 @@ export default function NewHomeScreen() {
             </Text>
           </View>
           <AppIcon name="chevron-forward" size={18} color={Colors.gold} />
-        </TouchableOpacity>
+        </Touchable>
 
         {/* Today's Pick — newest saved design */}
         <View style={styles.section}>
@@ -137,7 +141,7 @@ export default function NewHomeScreen() {
           {saved.isLoading ? (
             <Skeleton height={210} borderRadius={Radius.lg} />
           ) : latestSaved ? (
-            <TouchableOpacity
+            <Touchable
               onPress={() => router.push(`/saved/${latestSaved.id}` as any)}
               activeOpacity={0.92}
               accessibilityRole="button"
@@ -172,7 +176,7 @@ export default function NewHomeScreen() {
                   )}
                 </View>
               </View>
-            </TouchableOpacity>
+            </Touchable>
           ) : (
             <View style={styles.emptyHero}>
               <EmptyState
@@ -207,9 +211,9 @@ export default function NewHomeScreen() {
             </View>
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
-              {catalogItems.map((item) => (
-                <TouchableOpacity
-                  key={item.id}
+              {catalogItems.map((item, enterIdx) => (
+                <Touchable
+                  key={item.id} enterIndex={enterIdx}
                   style={styles.recentTile}
                   onPress={() => router.push(`/catalog/${item.id}` as any)}
                   activeOpacity={0.85}
@@ -228,16 +232,16 @@ export default function NewHomeScreen() {
                     )}
                   </View>
                   <Text style={styles.recentTileName} numberOfLines={1}>{item.label}</Text>
-                </TouchableOpacity>
+                </Touchable>
               ))}
-              <TouchableOpacity
+              <Touchable
                 onPress={() => router.push('/screens/scan' as any)}
                 style={styles.addTile}
                 accessibilityRole="button"
                 accessibilityLabel="Scan new items"
               >
                 <AppIcon name="add" size={22} color={Colors.dim} />
-              </TouchableOpacity>
+              </Touchable>
               {!catalogItems.length && (
                 <Text style={styles.recentEmpty}>Scan items to fill your wardrobe</Text>
               )}
@@ -255,11 +259,11 @@ export default function NewHomeScreen() {
             />
             {jobs.isLoading
               ? [0, 1].map((i) => <Skeleton key={i} height={58} borderRadius={Radius.md} style={{ marginBottom: 8 }} />)
-              : recentJobs.map((j) => {
+              : recentJobs.map((j, enterIdx) => {
                   const meta = JOB_STATUS_META[j.status]
                   return (
-                    <TouchableOpacity
-                      key={j.id}
+                    <Touchable
+                      key={j.id} enterIndex={enterIdx}
                       style={styles.jobRow}
                       onPress={() =>
                         router.push(
@@ -279,7 +283,7 @@ export default function NewHomeScreen() {
                         </Text>
                       </View>
                       <AppIcon name="chevron-forward" size={16} color={Colors.mid} />
-                    </TouchableOpacity>
+                    </Touchable>
                   )
                 })}
           </View>

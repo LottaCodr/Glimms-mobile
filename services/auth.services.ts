@@ -39,3 +39,34 @@ export async function fetchMe(): Promise<User> {
     const { data } = await apiClient.get<User>("/api/users/me");
     return data;
 }
+
+/** Sign in or up with a Google ID token (verified by the API). */
+export async function signInWithGoogle(idToken: string): Promise<AuthTokens> {
+    const { data } = await apiClient.post<AuthTokens>("/api/auth/google", { idToken });
+    return data;
+}
+
+/** Sign in or up with an Apple identity token. Apple shares the name only on the first sign-in. */
+export async function signInWithApple(identityToken: string, name?: string): Promise<AuthTokens> {
+    const { data } = await apiClient.post<AuthTokens>("/api/auth/apple", {
+        identityToken,
+        ...(name?.trim() ? { name: name.trim() } : {}),
+    });
+    return data;
+}
+
+/** Emails a reset link if the address has an account. The reply is the same either way. */
+export async function requestPasswordReset(email: string): Promise<void> {
+    await apiClient.post("/api/auth/forgot-password", { email: email.trim().toLowerCase() });
+}
+
+/** Sends the "confirm your email" message again. */
+export async function resendVerification(): Promise<{ alreadyVerified: boolean }> {
+    const { data } = await apiClient.post<{ alreadyVerified?: boolean }>("/api/auth/resend-verification");
+    return { alreadyVerified: !!data?.alreadyVerified };
+}
+
+/** Permanently deletes the account and everything stored for it. */
+export async function deleteAccount(): Promise<void> {
+    await apiClient.delete("/api/users/me");
+}

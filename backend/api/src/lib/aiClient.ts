@@ -206,6 +206,18 @@ export const aiClient = {
     }, { retries: config.aiMaxRetries, correlationId, step: 'embeddings', service: AI_SERVICE_SLUGS.embeddingEngine });
   },
 
+  /** Removes every vector a user owns (account deletion). */
+  async deleteUserVectors(userId: string, namespace: string, correlationId: string) {
+    return callWithRetry(async () => {
+      const { data } = await axios.delete(`${config.ai.embeddingEngine}/vectors/by-user`, {
+        data: { user_id: userId, namespace },
+        headers: headers(correlationId),
+        timeout: t(config.aiTimeouts.fast),
+      });
+      return data;
+    }, { retries: config.aiMaxRetries, correlationId, step: 'embedding_delete', service: AI_SERVICE_SLUGS.embeddingEngine });
+  },
+
   async searchEmbeddings(embedding: number[], topK:number, namespace:string, filter:any, correlationId: string) {
     return callWithRetry(async () => {
       const { data } = await axios.post(`${config.ai.embeddingEngine}/search`, { embedding, top_k: topK, namespace, filter }, {

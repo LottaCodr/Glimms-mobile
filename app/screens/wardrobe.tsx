@@ -5,9 +5,14 @@
  */
 import React, { useCallback, useMemo, useState } from 'react'
 import {
-  View, Text, StyleSheet, TouchableOpacity,
-  FlatList, RefreshControl, TextInput,
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  RefreshControl,
+  TextInput,
 } from 'react-native'
+import { Enter, Touchable } from '@/components/motion'
 import { Image } from 'expo-image'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -26,7 +31,7 @@ import type { CatalogItem } from '@/types/api'
 const CATEGORIES = ['All', 'top', 'bottom', 'outerwear', 'shoes', 'accessory'] as const
 type CategoryFilter = (typeof CATEGORIES)[number]
 
-function CatalogTile({ item }: { item: CatalogItem }) {
+function CatalogTile({ item, enterIndex }: { item: CatalogItem; enterIndex?: number }) {
   const router = useRouter()
   const [imageUri, setImageUri] = useState<string | null>(item.imageUrl ?? item.thumbnailUrl ?? null)
   const [retrying, setRetrying] = useState(false)
@@ -45,7 +50,8 @@ function CatalogTile({ item }: { item: CatalogItem }) {
   }, [item.id, retrying])
 
   return (
-    <TouchableOpacity
+    <Touchable
+      enterIndex={enterIndex}
       style={styles.tileWrap}
       onPress={() => router.push(`/catalog/${item.id}` as any)}
       activeOpacity={0.85}
@@ -72,7 +78,7 @@ function CatalogTile({ item }: { item: CatalogItem }) {
       </View>
       <Text style={styles.tileName} numberOfLines={1}>{item.label}</Text>
       {!!item.category && <Text style={styles.tileCat} numberOfLines={1}>{item.category}</Text>}
-    </TouchableOpacity>
+    </Touchable>
   )
 }
 
@@ -121,7 +127,7 @@ export default function WardrobeScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.title}>My Wardrobe</Text>
+          <Enter><Text style={styles.title}>My Wardrobe</Text></Enter>
           <Text style={styles.subtitle}>{total} item{total === 1 ? '' : 's'}</Text>
         </View>
         <IconButton
@@ -149,9 +155,9 @@ export default function WardrobeScreen() {
             clearButtonMode="while-editing"
           />
           {!!search && (
-            <TouchableOpacity onPress={() => setSearch('')} hitSlop={8} accessibilityLabel="Clear search">
+            <Touchable onPress={() => setSearch('')} hitSlop={8} accessibilityLabel="Clear search">
               <AppIcon name="close-circle" size={16} color={Colors.mid} />
-            </TouchableOpacity>
+            </Touchable>
           )}
         </View>
       </View>
@@ -224,7 +230,7 @@ export default function WardrobeScreen() {
               <TileGridSkeleton count={3} />
             </View>
           ) : items.length ? (
-            <TouchableOpacity
+            <Touchable
               style={styles.addTile}
               onPress={() => router.push('/screens/scan' as any)}
               accessibilityRole="button"
@@ -232,10 +238,10 @@ export default function WardrobeScreen() {
             >
               <AppIcon name="add" size={20} color={Colors.dim} />
               <Text style={styles.addTileText}>Add more</Text>
-            </TouchableOpacity>
+            </Touchable>
           ) : null
         }
-        renderItem={({ item }) => <CatalogTile item={item} />}
+        renderItem={({ item, index }) => <CatalogTile item={item} enterIndex={index} />}
       />
     </SafeAreaView>
   )

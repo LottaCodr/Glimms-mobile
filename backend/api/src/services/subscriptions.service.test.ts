@@ -34,12 +34,20 @@ function stripePrice(id: string, overrides: Record<string, unknown> = {}) {
 
 function fakeStripe() {
   let nextEvent: unknown = null;
+  let eventNumber = 0;
+  /** What Stripe would return for each subscription if asked right now. */
+  const live = new Map<string, any>();
   const stripe = {
-    customers: { create: jest.fn(async () => ({ id: 'cus_new' })) },
+    customers: { create: jest.fn(async () => ({ id: 'cus_new' })), del: jest.fn(async () => ({ deleted: true })) },
     checkout: { sessions: { create: jest.fn(async () => ({ id: 'cs_1', url: 'https://checkout.stripe.com/c/pay/cs_1' })) } },
     billingPortal: { sessions: { create: jest.fn(async () => ({ url: 'https://billing.stripe.com/p/session/1' })) } },
     prices: { retrieve: jest.fn(async (id: string) => stripePrice(id)) },
-    subscriptions: { retrieve: jest.fn(async () => ({ status: 'active' })) },
+    subscriptions: {
+      retrieve: jest.fn(async (id: string) => {
+        if (!live.has(id)) throw Object.assign(new Error('No such subscription'), { code: 'resource_missing' });
+        return live.get(id);
+      }),
+    },
     webhooks: {
       constructEvent: jest.fn((_body: unknown, signature: string) => {
         if (signature !== 'valid') throw new Error('No signatures found matching the expected signature');
@@ -50,7 +58,19 @@ function fakeStripe() {
   return {
     stripe,
     client: stripe as unknown as StripeClient,
-    deliver: (event: unknown) => { nextEvent = event; },
+    live,
+    /**
+     * Queues a webhook. A subscription event also becomes Stripe's current
+     * state for that subscription, unless `stale` marks it as an old snapshot.
+     */
+    deliver: (event: any, options: { stale?: boolean; id?: string } = {}) => {
+      eventNumber += 1;
+      nextEvent = { id: options.id ?? `evt_${eventNumber}`, ...event };
+      const object = event?.data?.object;
+      if (!options.stale && typeof event?.type === 'string' && event.type.startsWith('customer.subscription.')) {
+        live.set(object.id, event.type.endsWith('deleted') ? { ...object, status: 'canceled' } : object);
+      }
+    },
   };
 }
 
@@ -237,7 +257,7 @@ describe('getByUserId', () => {
   it('reports the free plan for a user with no subscription row', async () => {
     const user = await createUser();
     expect(await createSubscriptionsService(null, SETTINGS).getByUserId(user.id)).toEqual({
-      userId: user.id, status: 'inactive', tier: 'free',
+      userId: user.id, status: 'inactive', tier: 'free', provider: null,
       stripeCustomerId: null, stripeSubscriptionId: null, currentPeriodEnd: null, cancelAtPeriodEnd: false,
     });
   });
@@ -363,5 +383,97 @@ describe('handleWebhook', () => {
     expect(await service.handleWebhook(body, 'valid')).toEqual({ received: true });
     deliver({ type: 'charge.refunded', data: { object: {} } });
     expect(await service.handleWebhook(body, 'valid')).toEqual({ received: true });
+  });
+
+  it('applies a redelivered event only once', async () => {
+    const { client, deliver, stripe } = fakeStripe();
+    const service = createSubscriptionsService(client, SETTINGS);
+    const user = await subscriber();
+
+    deliver(subscriptionEvent('customer.subscription.created'), { id: 'evt_same' });
+    expect(await service.handleWebhook(body, 'valid')).toEqual({ received: true });
+    await usersRepository.update(user.id, { tier: 'free' }); // would be undone if re-applied
+
+    deliver(subscriptionEvent('customer.subscription.created'), { id: 'evt_same' });
+    expect(await service.handleWebhook(body, 'valid')).toEqual({ received: true, duplicate: true });
+
+    expect(await usersRepository.findById(user.id)).toMatchObject({ tier: 'free' });
+    expect(stripe.subscriptions.retrieve).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries an event whose handling failed', async () => {
+    const { client, deliver, stripe } = fakeStripe();
+    const service = createSubscriptionsService(client, SETTINGS);
+    const user = await subscriber();
+    deliver(subscriptionEvent('customer.subscription.created'), { id: 'evt_retry' });
+
+    stripe.subscriptions.retrieve.mockRejectedValueOnce(new Error('stripe timeout'));
+    await expect(service.handleWebhook(body, 'valid')).rejects.toThrow('stripe timeout');
+    expect(await usersRepository.findById(user.id)).toMatchObject({ tier: 'free' });
+
+    expect(await service.handleWebhook(body, 'valid')).toEqual({ received: true });
+    expect(await usersRepository.findById(user.id)).toMatchObject({ tier: 'premium' });
+  });
+
+  it('uses the subscription\'s current state, not a late event\'s snapshot', async () => {
+    const { client, deliver } = fakeStripe();
+    const service = createSubscriptionsService(client, SETTINGS);
+    const user = await subscriber();
+    deliver(subscriptionEvent('customer.subscription.created'));
+    await service.handleWebhook(body, 'valid');
+    deliver(subscriptionEvent('customer.subscription.deleted'));
+    await service.handleWebhook(body, 'valid');
+
+    // An "updated … active" event from before the cancellation arrives last.
+    deliver(subscriptionEvent('customer.subscription.updated', { status: 'active' }), { stale: true });
+    await service.handleWebhook(body, 'valid');
+
+    expect(await subscriptionsRepository.findByUserId(user.id)).toMatchObject({ status: 'cancelled', stripeSubscriptionId: null });
+    expect(await usersRepository.findById(user.id)).toMatchObject({ tier: 'free' });
+  });
+
+  it('does not downgrade when an old subscription ends after a new one started', async () => {
+    const { client, deliver } = fakeStripe();
+    const service = createSubscriptionsService(client, SETTINGS);
+    const user = await subscriber();
+    deliver(subscriptionEvent('customer.subscription.created', { id: 'sub_new', items: { data: [{ price: { id: PRO } }] } }));
+    await service.handleWebhook(body, 'valid');
+
+    deliver(subscriptionEvent('customer.subscription.deleted', { id: 'sub_old' }));
+    await service.handleWebhook(body, 'valid');
+
+    expect(await subscriptionsRepository.findByUserId(user.id)).toMatchObject({ status: 'active', stripeSubscriptionId: 'sub_new' });
+    expect(await usersRepository.findById(user.id)).toMatchObject({ tier: 'pro' });
+  });
+
+  it('re-activates from a paid invoice by reading the subscription', async () => {
+    const { client, deliver, live } = fakeStripe();
+    const service = createSubscriptionsService(client, SETTINGS);
+    const user = await subscriber();
+    deliver(subscriptionEvent('customer.subscription.created', { status: 'past_due' }));
+    await service.handleWebhook(body, 'valid');
+
+    live.set('sub_1', { ...live.get('sub_1'), status: 'active' });
+    deliver({ type: 'invoice.payment_succeeded', data: { object: { customer: 'cus_1', subscription: 'sub_1' } } });
+    await service.handleWebhook(body, 'valid');
+
+    expect(await subscriptionsRepository.findByUserId(user.id)).toMatchObject({ status: 'active' });
+    expect(await usersRepository.findById(user.id)).toMatchObject({ tier: 'premium' });
+  });
+});
+
+describe('deleteCustomer', () => {
+  it('deletes the Stripe customer and treats "already gone" as success', async () => {
+    const { client, stripe } = fakeStripe();
+    const service = createSubscriptionsService(client, SETTINGS);
+
+    await service.deleteCustomer('cus_1');
+    expect(stripe.customers.del).toHaveBeenCalledWith('cus_1');
+
+    stripe.customers.del.mockRejectedValueOnce(Object.assign(new Error('No such customer'), { code: 'resource_missing' }));
+    await expect(service.deleteCustomer('cus_gone')).resolves.toBeUndefined();
+
+    stripe.customers.del.mockRejectedValueOnce(new Error('stripe is down'));
+    await expect(service.deleteCustomer('cus_1')).rejects.toThrow('stripe is down');
   });
 });

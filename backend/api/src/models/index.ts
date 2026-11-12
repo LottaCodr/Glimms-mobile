@@ -20,14 +20,20 @@ export interface User {
   avatarUrl: string | null;
   tier:      Tier;
   isActive:  boolean;
+  /** When the user proved they own `email`; null until then. */
+  emailVerifiedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
 
-/** Only the auth service may see the hash; it is never part of `User`. */
+/** Only the auth service may see the hash and identities; never part of `User`. */
 export interface UserCredentials extends User {
   passwordHash: string | null;
+  googleSub:    string | null;
+  appleSub:     string | null;
 }
+
+export type AccountTokenPurpose = 'password_reset' | 'email_verification';
 
 export interface RefreshToken {
   id:        string;
@@ -66,6 +72,8 @@ export interface Subscription {
   stripeCustomerId:     string | null;
   stripeSubscriptionId: string | null;
   status:               SubStatus;
+  /** Who bills this subscription. Null until something has been bought. */
+  provider:             'stripe' | 'credo' | null;
   currentPeriodEnd:     Date | null;
   cancelAtPeriodEnd:    boolean;
   createdAt:            Date;

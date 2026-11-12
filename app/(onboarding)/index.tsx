@@ -11,9 +11,9 @@ import {
     ScrollView,
     StyleSheet,
     Text,
-    TouchableOpacity,
     View,
 } from "react-native";
+import { Touchable } from "@/components/motion";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuthStore } from "@/store/auth.store"; // <-- import the store
 
@@ -302,7 +302,7 @@ export default function OnboardingIntro() {
                 </View>
 
                 {/* Action */}
-                <TouchableOpacity
+                <Touchable
                     style={[
                         styles.primaryButton,
                         {
@@ -314,7 +314,7 @@ export default function OnboardingIntro() {
                     activeOpacity={0.88}
                 >
                     <Text style={styles.primaryButtonText}>Get Started</Text>
-                </TouchableOpacity>
+                </Touchable>
 
                 <View style={styles.bottomLinks}>
                     <Text style={styles.bottomText}>

@@ -49,15 +49,70 @@ it("uploads queued scans in order and empties the queue", async () => {
     expect(await stored()).toEqual([]);
 });
 
-it("keeps a scan that failed to upload and still sends the rest", async () => {
+const serverError = (status: number) => Object.assign(new Error(`HTTP ${status}`), { status });
+const offline = () => Object.assign(new Error("Network Error"), { status: 0, isNetworkError: true });
+
+it("keeps a scan the server failed on and still sends the rest", async () => {
     await queue().enqueue(scan("file:///a.jpg"));
     await queue().enqueue(scan("file:///b.jpg"));
-    uploadQueued.mockRejectedValueOnce(new Error("offline again"));
+    uploadQueued.mockRejectedValueOnce(serverError(503));
 
     await queue().flush();
 
     expect(queue().items.map((i) => i.uris[0])).toEqual(["file:///a.jpg"]);
-    expect((await stored()).map((i: any) => i.uris[0])).toEqual(["file:///a.jpg"]);
+    expect((await stored()).map((i: any) => [i.uris[0], i.attempts])).toEqual([["file:///a.jpg", 1]]);
+});
+
+it("stops, keeping everything, when the connection drops mid-flush", async () => {
+    await queue().enqueue(scan("file:///a.jpg"));
+    await queue().enqueue(scan("file:///b.jpg"));
+    uploadQueued.mockRejectedValueOnce(offline());
+
+    await queue().flush();
+
+    expect(uploadQueued).toHaveBeenCalledTimes(1);
+    expect(queue().items.map((i) => [i.uris[0], i.attempts])).toEqual([["file:///a.jpg", 0], ["file:///b.jpg", 0]]);
+});
+
+it("gives up on a scan after five failed uploads instead of retrying forever", async () => {
+    await queue().enqueue(scan("file:///a.jpg"));
+    uploadQueued.mockRejectedValue(serverError(500));
+
+    for (let i = 0; i < 4; i++) await queue().flush();
+    expect(queue().items).toHaveLength(1);
+
+    await queue().flush();
+    expect(queue().items).toEqual([]);
+    expect(await stored()).toEqual([]);
+    expect(uploadQueued).toHaveBeenCalledTimes(5);
+});
+
+it.each([400, 403, 413, 422])("drops a scan the server refuses with %i straight away", async (status) => {
+    await queue().enqueue(scan("file:///bad.jpg"));
+    await queue().enqueue(scan("file:///good.jpg"));
+    uploadQueued.mockRejectedValueOnce(serverError(status));
+
+    await queue().flush();
+
+    expect(queue().items).toEqual([]);
+    expect(uploadQueued).toHaveBeenCalledTimes(2);
+});
+
+it("keeps only the newest twenty scans", async () => {
+    for (let i = 0; i < 23; i++) await queue().enqueue(scan(`file:///${i}.jpg`));
+    expect(queue().items).toHaveLength(20);
+    expect(queue().items[0].uris[0]).toBe("file:///3.jpg");
+});
+
+it("ignores stored entries that are not usable scans", async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([null, { id: "x" }, { id: "ok", uris: ["file:///a.jpg"], vertical: "wardrobe", options: {} }]));
+    await queue().hydrate();
+    expect(queue().items.map((i) => i.id)).toEqual(["ok"]);
+
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ not: "an array" }));
+    useOfflineQueueStore.setState({ items: [], hydrated: false });
+    await queue().hydrate();
+    expect(queue().items).toEqual([]);
 });
 
 it("does not upload the same scan twice when flushes overlap", async () => {

@@ -1,6 +1,7 @@
 import { Router, Request } from 'express';
 import { z } from 'zod';
 import { subscriptionsService } from '../services/subscriptions.service';
+import { credoService } from '../services/credo.service';
 import { requireAuth, AuthRequest } from '../middleware/auth.middleware';
 import { validateBody } from '../middleware/validate.middleware';
 
@@ -40,6 +41,32 @@ router.post('/checkout', requireAuth, validateBody(checkoutSchema), async (req: 
 router.post('/portal', requireAuth, async (req: AuthRequest, res) => {
   const session = await subscriptionsService.createPortalSession(req.user!.sub);
   res.json(session);
+});
+
+// ── Credo (eTranzact): naira card and bank-transfer passes ──────────────────
+
+const credoCheckoutSchema = z.object({ tier: z.enum(['premium', 'pro']) });
+const credoConfirmSchema = z.object({ reference: z.string().min(1).max(100) });
+
+/** GET /api/subscriptions/credo/plans — public; `{ plans: [] }` when switched off */
+router.get('/credo/plans', (_req, res) => {
+  res.set('Cache-Control', 'public, max-age=300');
+  res.json({ plans: credoService.listPlans() });
+});
+
+/** POST /api/subscriptions/credo/checkout → { url, reference } */
+router.post('/credo/checkout', requireAuth, validateBody(credoCheckoutSchema), async (req: AuthRequest, res) => {
+  res.json(await credoService.createCheckout(req.user!.sub, req.body.tier));
+});
+
+/** POST /api/subscriptions/credo/confirm → { status: paid|pending|failed, tier } */
+router.post('/credo/confirm', requireAuth, validateBody(credoConfirmSchema), async (req: AuthRequest, res) => {
+  res.json(await credoService.confirmForUser(req.user!.sub, req.body.reference));
+});
+
+/** POST /api/subscriptions/credo/webhook  (called by Credo) */
+router.post('/credo/webhook', async (req: Request, res) => {
+  res.json(await credoService.handleWebhook(req.get('x-credo-signature') ?? req.get('credo-signature'), req.body));
 });
 
 /** POST /api/subscriptions/webhook  (called by Stripe — raw body) */

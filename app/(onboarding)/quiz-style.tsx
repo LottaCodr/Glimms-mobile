@@ -1,5 +1,6 @@
 import React from 'react'
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
+import { View, Text, StyleSheet } from 'react-native'
+import { Enter, Touchable } from '@/components/motion'
 import { useRouter } from 'expo-router'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Colors, Radius, Spacing, Typography } from '@/theme'
@@ -30,14 +31,14 @@ export default function QuizStyleScreen() {
         </View>
 
         <Text style={styles.label}>1 OF 3</Text>
-        <Text style={styles.title}>What’s your{'\n'}<Text style={styles.accent}>personal vibe?</Text></Text>
+        <Enter><Text style={styles.title}>What’s your{'\n'}<Text style={styles.accent}>personal vibe?</Text></Text></Enter>
 
         <View style={styles.grid}>
-          {STYLES.map((opt) => {
+          {STYLES.map((opt, enterIdx) => {
             const active = selected === opt.id
             return (
-              <TouchableOpacity
-                key={opt.id}
+              <Touchable
+                key={opt.id} enterIndex={enterIdx}
                 onPress={() => setSelected(opt.id)}
                 activeOpacity={0.8}
                 style={[styles.optCard, active && styles.optCardActive]}
@@ -54,7 +55,7 @@ export default function QuizStyleScreen() {
                     <AppIcon name="checkmark" size={11} color={Colors.black} />
                   </View>
                 )}
-              </TouchableOpacity>
+              </Touchable>
             )
           })}
         </View>

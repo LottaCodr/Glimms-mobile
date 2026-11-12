@@ -1,4 +1,7 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, DeleteObjectsCommand,
+  HeadObjectCommand, ListObjectsV2Command,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from '../config';
 import { logger } from './logger';
@@ -65,6 +68,38 @@ export async function verifyObjectOwnership(key: string, userId: string, session
 
 export async function deleteFromS3(key: string): Promise<void> {
   await s3.send(new DeleteObjectCommand({ Bucket: config.aws.s3Bucket, Key: key }));
+}
+
+/**
+ * Deletes every object under a prefix. Returns how many were removed.
+ * Throws if S3 reports any object it could not delete, so callers can retry.
+ */
+export async function deletePrefixFromS3(prefix: string): Promise<number> {
+  // An empty or root prefix would empty the bucket.
+  if (!prefix || !prefix.endsWith('/') || prefix === '/') {
+    throw new Error(`Refusing to delete unsafe S3 prefix: "${prefix}"`);
+  }
+  let deleted = 0;
+  let continuationToken: string | undefined;
+  do {
+    const page = await s3.send(new ListObjectsV2Command({
+      Bucket: config.aws.s3Bucket, Prefix: prefix, ContinuationToken: continuationToken,
+    }));
+    const keys = (page.Contents ?? []).map((object) => object.Key).filter((key): key is string => !!key);
+    if (keys.length) {
+      // ListObjectsV2 pages hold at most 1000 keys, the DeleteObjects limit.
+      const result = await s3.send(new DeleteObjectsCommand({
+        Bucket: config.aws.s3Bucket,
+        Delete: { Objects: keys.map((Key) => ({ Key })), Quiet: true },
+      }));
+      if (result.Errors?.length) {
+        throw new Error(`S3 could not delete ${result.Errors.length} object(s) under ${prefix}`);
+      }
+      deleted += keys.length;
+    }
+    continuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (continuationToken);
+  return deleted;
 }
 
 // Helpers per implementation guide §3.2

@@ -194,6 +194,57 @@ class EmbeddingStore:
                     deleted += 1
         return deleted
 
+    def delete_owner(self, owner_id: str, namespace: str | None = None) -> int | None:
+        """Delete every vector that belongs to one owner (account deletion).
+
+        Vectors are found two ways, because Pinecone's index types differ:
+        serverless indexes can list ids by prefix (the API writes ids as
+        ``<owner_id>:...``) but cannot delete by metadata, while pod indexes can
+        delete by the ``user_id`` metadata filter but cannot list.  Each index
+        supports at least one, so both are attempted and the call only fails
+        when neither works.  Returns the number deleted, or ``None`` when the
+        backend does not report it.
+        """
+
+        owner_id = str(owner_id).strip()
+        if not owner_id:
+            raise ValueError("owner id must not be empty")
+        namespace = (namespace or self.namespace).strip() or self.namespace
+        prefix = f"{owner_id}:"
+        remote = self._pinecone_index()
+        if remote is not None:
+            listed: int | None = None
+            errors: list[Exception] = []
+            try:
+                count = 0
+                for page in remote.list(prefix=prefix, namespace=namespace):
+                    ids = [str(identifier) for identifier in page]
+                    if ids:
+                        remote.delete(ids=ids, namespace=namespace)
+                        count += len(ids)
+                listed = count
+            except Exception as exc:  # noqa: BLE001 - pod indexes cannot list
+                errors.append(exc)
+            try:
+                remote.delete(filter={"user_id": owner_id}, namespace=namespace)
+                return None
+            except Exception as exc:  # noqa: BLE001 - serverless cannot filter-delete
+                errors.append(exc)
+            if len(errors) == 2:
+                raise RuntimeError(f"could not delete vectors for owner: {errors[0]}; {errors[1]}")
+            return listed
+
+        deleted = 0
+        with self._lock:
+            bucket = self._vectors.setdefault(namespace, {})
+            for identifier in [
+                key for key, (_, metadata) in bucket.items()
+                if key.startswith(prefix) or metadata.get("user_id") == owner_id
+            ]:
+                del bucket[identifier]
+                deleted += 1
+        return deleted
+
     @staticmethod
     def _match_to_dict(match: Any) -> dict[str, Any]:
         if isinstance(match, dict):

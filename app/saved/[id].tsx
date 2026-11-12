@@ -3,6 +3,7 @@
  * The API only lists saved designs (no GET /saved/:id), so we hydrate from the
  * React Query cache the list screens already populated.
  */
+import { Enter } from "@/components/motion"
 import React from "react";
 import { Alert, ScrollView, Share, StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
@@ -133,7 +134,7 @@ export default function SavedDetailScreen() {
                 </View>
 
                 {/* Title + date */}
-                <Text style={styles.title}>{design.title ?? "Saved look"}</Text>
+                <Enter><Text style={styles.title}>{design.title ?? "Saved look"}</Text></Enter>
                 <Text style={styles.meta}>Saved {new Date(design.createdAt).toLocaleDateString()}</Text>
 
                 {/* Explanation */}

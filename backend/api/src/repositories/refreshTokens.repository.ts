@@ -25,6 +25,11 @@ export const refreshTokensRepository = {
     return rows[0] ? { userId: rows[0].user_id } : null;
   },
 
+  /** Signs the user out everywhere (password change, account takeover defence). */
+  async deleteAllForUser(userId: string, db: Queryable = getDb()): Promise<void> {
+    await db.query('delete from refresh_tokens where user_id = $1', [userId]);
+  },
+
   async deleteByHash(tokenHash: string, db: Queryable = getDb()): Promise<void> {
     await db.query('delete from refresh_tokens where token_hash = $1', [tokenHash]);
   },

@@ -1,14 +1,15 @@
 // src/components/index.tsx
-import React from 'react'
+import React, { useEffect } from 'react'
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated'
 import {
   View,
   Text,
-  TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
   ViewStyle,
   TextStyle,
 } from 'react-native'
+import { Springs, Touchable } from '@/components/motion'
 import { Colors, Radius, Spacing, Typography } from '@/theme'
 import { AppIcon } from '@/components/ui/Icon'
 import type { IoniconName } from '@/components/ui/Icon'
@@ -24,16 +25,17 @@ interface GoldButtonProps {
 export const GoldButton: React.FC<GoldButtonProps> = ({
   label, onPress, disabled, loading, style,
 }) => (
-  <TouchableOpacity
+  <Touchable
     onPress={onPress}
     disabled={disabled || loading}
     activeOpacity={0.85}
+    haptic="light"
     style={[styles.goldBtn, disabled && { opacity: 0.4 }, style]}
   >
     {loading
       ? <ActivityIndicator color={Colors.black} />
       : <Text style={styles.goldBtnText}>{label}</Text>}
-  </TouchableOpacity>
+  </Touchable>
 )
 
 // ─── OutlineButton ───────────────────────────────────────────────────────────
@@ -43,30 +45,41 @@ interface OutlineButtonProps {
   style?: ViewStyle
 }
 export const OutlineButton: React.FC<OutlineButtonProps> = ({ label, onPress, style }) => (
-  <TouchableOpacity onPress={onPress} activeOpacity={0.7} style={[styles.outlineBtn, style]}>
+  <Touchable onPress={onPress} activeOpacity={0.7} style={[styles.outlineBtn, style]}>
     <Text style={styles.outlineBtnText}>{label}</Text>
-  </TouchableOpacity>
+  </Touchable>
 )
 
 // ─── BackButton ──────────────────────────────────────────────────────────────
 export const BackButton: React.FC<{ onPress: () => void }> = ({ onPress }) => (
-  <TouchableOpacity onPress={onPress} style={styles.backBtn} activeOpacity={0.7} hitSlop={{ top:8, bottom:8, left:8, right:8 }}>
+  <Touchable onPress={onPress} style={styles.backBtn} activeOpacity={0.7} hitSlop={{ top:8, bottom:8, left:8, right:8 }}>
     <Text style={styles.backArrow}>‹</Text>
-  </TouchableOpacity>
+  </Touchable>
 )
 
 // ─── ProgressDots ────────────────────────────────────────────────────────────
 interface ProgressDotsProps { current: number; total: number }
+const ProgressDot: React.FC<{ active: boolean; done: boolean }> = ({ active, done }) => {
+  const width = useSharedValue(active ? 24 : 7)
+  useEffect(() => {
+    width.set(withSpring(active ? 24 : 7, Springs.release))
+  }, [active, width])
+  const animated = useAnimatedStyle(() => ({ width: width.value }))
+  return (
+    <Animated.View
+      style={[styles.dot, { backgroundColor: active || done ? Colors.gold : Colors.dim, opacity: done ? 0.55 : 1 }, animated]}
+    />
+  )
+}
+
 export const ProgressDots: React.FC<ProgressDotsProps> = ({ current, total }) => (
-  <View style={styles.dotsRow}>
+  <View
+    style={styles.dotsRow}
+    accessibilityRole="progressbar"
+    accessibilityLabel={`Step ${current + 1} of ${total}`}
+  >
     {Array.from({ length: total }).map((_, i) => (
-      <View
-        key={i}
-        style={[
-          styles.dot,
-          i === current ? styles.dotActive : styles.dotInactive,
-        ]}
-      />
+      <ProgressDot key={i} active={i === current} done={i < current} />
     ))}
   </View>
 )
@@ -155,14 +168,14 @@ export const Divider: React.FC<{ label?: string }> = ({ label }) => (
 
 // ─── UpgradeCard ─────────────────────────────────────────────────────────────
 export const UpgradeCard: React.FC<{ onPress: () => void }> = ({ onPress }) => (
-  <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.upgradeCard}>
+  <Touchable onPress={onPress} activeOpacity={0.85} style={styles.upgradeCard}>
     <AppIcon name="diamond-outline" size={24} color={Colors.gold} />
     <View style={{ flex: 1, marginLeft: Spacing.md }}>
       <Text style={styles.upgradeTitle}>Upgrade to Premium</Text>
       <Text style={styles.upgradeSub}>Unlimited scans · Climate intelligence</Text>
     </View>
     <AppIcon name="chevron-forward" size={18} color={Colors.gold} />
-  </TouchableOpacity>
+  </Touchable>
 )
 
 // ─── StyleSheet ──────────────────────────────────────────────────────────────

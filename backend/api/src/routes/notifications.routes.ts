@@ -7,7 +7,7 @@ import { validateBody } from '../middleware/validate.middleware';
 const router = Router();
 
 const registerTokenSchema = z.object({
-  token: z.string().min(1),
+  token: z.string().min(1).max(300),
   platform: z.enum(['ios', 'android']),
 });
 

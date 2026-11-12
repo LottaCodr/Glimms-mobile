@@ -107,3 +107,58 @@ describe("logout", () => {
         expect(state()).toMatchObject({ isAuthenticated: false, user: null, pushToken: null });
     });
 });
+
+describe("social sign-in", () => {
+    it("signs in with a Google id token and loads the profile", async () => {
+        api.signInWithGoogle.mockResolvedValue(tokens);
+
+        await state().signInWithGoogle("google-id-token");
+
+        expect(api.signInWithGoogle).toHaveBeenCalledWith("google-id-token");
+        expect(state()).toMatchObject({ isAuthenticated: true, user });
+        expect(await tokenStore.getAccessToken()).toBe("access-1");
+    });
+
+    it("signs in with Apple", async () => {
+        api.signInWithApple.mockResolvedValue(tokens);
+
+        await state().signInWithApple("apple-identity-token", "Ada L");
+
+        expect(api.signInWithApple).toHaveBeenCalledWith("apple-identity-token", "Ada L");
+        expect(state().isAuthenticated).toBe(true);
+    });
+
+    it("stays signed out when the server rejects the token", async () => {
+        api.signInWithGoogle.mockRejectedValue(new ApiError(401, { error: "Sign-in failed", code: "UNAUTHORIZED" }));
+
+        await expect(state().signInWithGoogle("bad")).rejects.toMatchObject({ status: 401 });
+        expect(state().isAuthenticated).toBe(false);
+        expect(await tokenStore.getAccessToken()).toBeNull();
+    });
+});
+
+describe("deleteAccount", () => {
+    beforeEach(async () => {
+        await tokenStore.save(tokens);
+        useAuthStore.setState({ user, isAuthenticated: true, isLoading: false, pushToken: null });
+    });
+
+    it("signs out and clears the session once the server has deleted the account", async () => {
+        api.deleteAccount.mockResolvedValue(undefined as any);
+
+        await state().deleteAccount();
+
+        expect(state()).toMatchObject({ isAuthenticated: false, user: null });
+        expect(await tokenStore.getAccessToken()).toBeNull();
+        expect(wsService.disconnect).toHaveBeenCalled();
+    });
+
+    it("keeps the user signed in when the server refuses, so they can retry", async () => {
+        api.deleteAccount.mockRejectedValue(new ApiError(503, { error: "Billing unavailable", code: "BILLING_UNAVAILABLE" }));
+
+        await expect(state().deleteAccount()).rejects.toMatchObject({ code: "BILLING_UNAVAILABLE" });
+
+        expect(state()).toMatchObject({ isAuthenticated: true, user });
+        expect(await tokenStore.getAccessToken()).toBe("access-1");
+    });
+});

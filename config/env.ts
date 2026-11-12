@@ -73,6 +73,16 @@ export const ENV = {
     SCAN_MAX_FILE_BYTES: 15 * 1024 * 1024, // 15 MB (v1 sessions)
     ALLOWED_IMAGE_MIME: ["image/jpeg", "image/png", "image/webp"] as readonly string[],
 
+    /**
+     * Google OAuth client ids, one per platform (Google Cloud → Credentials).
+     * Google sign-in is offered only on platforms that have one.
+     */
+    GOOGLE_CLIENT_IDS: {
+        ios: configuredValue(process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID, "googleIosClientId"),
+        android: configuredValue(process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID, "googleAndroidClientId"),
+        web: configuredValue(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID, "googleWebClientId"),
+    },
+
     /** Daily scan quotas by tier — display only, backend is the source of truth via X-Scan-* headers. */
     SCAN_LIMITS: { free: 10, premium: 100, pro: Infinity } as Record<string, number>,
 } as const;

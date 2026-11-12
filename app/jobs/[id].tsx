@@ -4,7 +4,8 @@
  * pipeline's `job:*` events with the same visual language.
  */
 import React from "react";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { CountUp, ProgressBar, Pulse, Touchable } from "@/components/motion";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -108,7 +109,7 @@ export default function JobScreen() {
                                             ))}
                                         </View>
                                     )}
-                                    <TouchableOpacity
+                                    <Touchable
                                         style={[styles.saveBtn, isSaved && styles.saveBtnDone]}
                                         onPress={() => void onSave(design, i)}
                                         disabled={isSaved || saveDesign.isPending}
@@ -123,18 +124,18 @@ export default function JobScreen() {
                                         <Text style={[styles.saveBtnText, isSaved && { color: Colors.gold }]}>
                                             {isSaved ? "Saved" : "Save look"}
                                         </Text>
-                                    </TouchableOpacity>
+                                    </Touchable>
                                 </View>
                             </View>
                         );
                     })}
-                    <TouchableOpacity
+                    <Touchable
                         onPress={() => router.replace("/(tabs)/home")}
                         style={{ alignSelf: "center", marginTop: 8 }}
                         hitSlop={8}
                     >
                         <Text style={{ color: Colors.mid }}>Back to home</Text>
-                    </TouchableOpacity>
+                    </Touchable>
                 </ScrollView>
             </SafeAreaView>
         );
@@ -144,15 +145,15 @@ export default function JobScreen() {
     const stepLabel = job.step ? (STEP_LABELS[job.step] ?? job.step) : "Getting started…";
     return (
         <SafeAreaView style={[styles.root, styles.center]} edges={["top", "bottom"]}>
-            <View style={styles.pulseCircle}>
-                <AppIcon name={Icons.wardrobe} size={44} color={Colors.gold} />
-            </View>
+            <Pulse>
+                <View style={styles.pulseCircle}>
+                    <AppIcon name={Icons.wardrobe} size={44} color={Colors.gold} />
+                </View>
+            </Pulse>
             <Text style={styles.title}>{stepLabel}</Text>
             {!!job.itemCount && <Text style={styles.sub}>{job.itemCount} items detected</Text>}
-            <View style={styles.track}>
-                <View style={[styles.fill, { width: `${Math.max(4, job.progress)}%` }]} />
-            </View>
-            <Text style={styles.pct}>{job.progress}%</Text>
+            <ProgressBar progress={Math.max(4, job.progress) / 100} style={styles.track} accessibilityLabel="Design progress" />
+            <CountUp value={job.progress} format={(n) => `${Math.round(n)}%`} style={styles.pct} />
         </SafeAreaView>
     );
 }

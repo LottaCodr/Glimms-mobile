@@ -28,9 +28,4 @@ export const usersService = {
       occupation: typeof data.occupation === 'string' ? data.occupation.trim() : data.occupation,
     });
   },
-
-  async deactivate(id: string) {
-    await usersRepository.update(id, { isActive: false });
-    return { message: 'Account deactivated' };
-  },
 };

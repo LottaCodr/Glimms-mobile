@@ -1,7 +1,7 @@
 # Glimms Frontend Integration Guide
 > How to implement the frontend (Web + Mobile) against `glimms-api`
 
-**Backend:** `glimms-api` — Express 4 + PostgreSQL (Supabase) + Redis/BullMQ + Socket.IO + Stripe + Firebase  
+**Backend:** `glimms-api` — Express 4 + PostgreSQL (Supabase) + Redis/BullMQ + Socket.IO + Stripe + Credo + Expo push  
 **API Base URL:** `http://localhost:4000` (dev) — `https://api.glimms.ai` (prod)  
 **Last updated:** 2026-08-11 — branch `arena/019ff0c9-glimms-api`
 
@@ -45,7 +45,7 @@
                                          ├─► Socket.IO (ws://)
                                          ├─► 6× Python AI services (8001-8008)
                                          ├─► Stripe (payments)
-                                         ├─► Firebase (push)
+                                         ├─► Expo push service
                                          └─► OpenWeather + Pinecone
 ```
 
@@ -668,7 +668,7 @@ If `detectedItems.length===0`, backend immediately completes with `emptyResult: 
 
 **Retry semantics:** `runPipeline` throws on catch → `updateJobStatus(..., 'failed')` → `job:failed` → BullMQ retries `3× exponential 3s`. Frontend may see multiple `job:update` bursts if job retries; treat `job:failed` as final after 3 attempts, or implement client retry button that re-uploads.
 
-**Offline/Background:** Push notification is sent on `completed` via Firebase: `"Your Glimms look is ready ✨"` + `data:{jobId, screen:"designs"}`. When app is backgrounded, rely on push to navigate to `JobDetail`.
+**Offline/Background:** Push notification is sent on `completed` via Expo push: `"Your Glimms look is ready ✨"` + `data:{jobId, screen:"designs"}`. When app is backgrounded, rely on push to navigate to `JobDetail`.
 
 ---
 
@@ -897,13 +897,11 @@ async function registerPush() {
   const { status } = await Notifications.requestPermissionsAsync();
   if (status !== "granted") return;
 
-  const token = (await Notifications.getExpoPushTokenAsync()).data; // Expo token — but backend expects FCM?
-  // For native FCM, use Firebase: getDevicePushTokenAsync / getFCM...
-  // Backend uses firebase-admin `admin.messaging().send({token})` expecting FCM/APNs token, not Expo token.
-  // So you must configure Expo with `use-next-notification` or send FCM token:
-  const fcmToken = (await Notifications.getDevicePushTokenAsync()).data;
+  // The API sends through Expo's push service, so it needs the Expo push token.
+  const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+  const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data; // "ExponentPushToken[…]"
 
-  await api.post("/api/notifications/device-token", { token: fcmToken, platform: Platform.OS as any });
+  await api.post("/api/notifications/device-token", { token, platform: Platform.OS as any });
 }
 
 useEffect(() => {
@@ -919,7 +917,7 @@ useEffect(() => {
 }, []);
 ```
 
-> **Important mismatch:** Backend `firebase-admin` expects **FCM** (Android) / **APNs** (iOS) tokens, not Expo `ExponentPushToken`. If you use Expo managed workflow, either (a) configure `expo-notifications` to get native FCM token (eject or use ` expo-dev-client` + `firebase`), or (b) ask backend to support Expo push via `https://exp.host/--/api/v2/push/send`. For MVP, document this and decide.
+> The API accepts **only Expo push tokens** (`ExponentPushToken[…]`) and delivers through `https://exp.host/--/api/v2/push/send`; Expo relays to APNs/FCM. Tokens Expo reports as `DeviceNotRegistered` are deleted automatically.
 
 **On logout**, call `DELETE /device-token` to avoid ghost pushes.
 
@@ -1108,7 +1106,7 @@ export function useCatalog(filters: {vertical?:Vertical, tag?:string}) {
 | Token store | `localStorage` or `httpOnly` cookie via BFF (your call) | `expo-secure-store` |
 | File pick | `<input type=file>` → `File` | `expo-image-picker` → `{uri,name,type}` |
 | Location | `navigator.geolocation` | `expo-location` (`requestForegroundPermissionsAsync`) |
-| Push | Web Push (not implemented — backend is FCM/APNs only) | FCM/APNs via `expo-notifications` + `firebase` |
+| Push | Web Push (not implemented) | Expo push tokens via `expo-notifications` |
 | Checkout | `window.location.href = url` (Stripe hosted) | `WebBrowser.openBrowserAsync(url)` → deep link return |
 | WS URL | `NEXT_PUBLIC_WS_URL` | `EXPO_PUBLIC_WS_URL` (LAN IP for device) |
 | CORS | Must set `Origin` allowlist | No Origin header — auto passes |
@@ -1353,3 +1351,25 @@ WS     /  (Socket.IO) auth: { token } or header Bearer
 
 *Questions? Check `AUDIT_REPORT.md` for backend decisions, or open an issue against `glimms-api`.*
 
+
+
+---
+
+## Account lifecycle, social sign-in and naira payments (added)
+
+| Method | Path | Auth | Body → Response |
+| --- | --- | --- | --- |
+| POST | `/api/auth/google` | – | `{ idToken }` → token pair |
+| POST | `/api/auth/apple` | – | `{ identityToken, name? }` → token pair |
+| POST | `/api/auth/forgot-password` | – | `{ email }` → always `200 { message }` |
+| POST | `/api/auth/reset-password` | – | `{ token, password }` → `{ message }`; `400 INVALID_TOKEN` |
+| POST | `/api/auth/verify-email` | – | `{ token }` → `{ message }` |
+| POST | `/api/auth/resend-verification` | Bearer | → `{ message, alreadyVerified? }` |
+| DELETE | `/api/users/me` | Bearer | Permanently deletes the account, billing, photos and vectors. `503 BILLING_UNAVAILABLE` if the subscription could not be cancelled (nothing is deleted). |
+| GET | `/api/subscriptions/credo/plans` | – | `{ plans: [{ tier, currency, amount, periodDays, feeOnTop }] }` (amount in kobo; empty = off) |
+| POST | `/api/subscriptions/credo/checkout` | Bearer | `{ tier }` → `{ url, reference }` |
+| POST | `/api/subscriptions/credo/confirm` | Bearer | `{ reference }` → `{ status: paid\|pending\|failed, tier }` |
+| POST | `/api/subscriptions/credo/webhook` | Credo | header `X-Credo-Signature` |
+
+`GET /api/users/me` now includes `emailVerifiedAt`; `GET /api/subscriptions/me` includes `provider` (`stripe`, `credo` or `null`).
+Emailed links open pages served by the API: `/account/reset-password`, `/account/verify-email`, and Credo returns the browser to `/account/credo/return`, which redirects to `glimms://billing/return?status=…`.

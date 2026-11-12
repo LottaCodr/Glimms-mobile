@@ -1,5 +1,6 @@
 import React from "react";
-import { StyleSheet, TouchableOpacity, ViewStyle } from "react-native";
+import { StyleSheet, ViewStyle } from "react-native";
+import { Touchable } from "@/components/motion";
 import * as Haptics from "expo-haptics";
 import { Colors } from "@/theme";
 import { AppIcon, IconFamily } from "./Icon";
@@ -32,7 +33,7 @@ export function IconButton({
     badgeDot,
 }: Props) {
     return (
-        <TouchableOpacity
+        <Touchable
             onPress={() => {
                 void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 onPress();
@@ -50,7 +51,7 @@ export function IconButton({
         >
             <AppIcon name={icon} family={family} size={size} color={color} />
             {badgeDot && <BadgeDot />}
-        </TouchableOpacity>
+        </Touchable>
     );
 }
 

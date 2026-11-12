@@ -1,7 +1,8 @@
 import { useTheme } from '@/provider/ThemeProvider';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Switch, Text, View } from 'react-native';
+import { Touchable } from '@/components/motion';
 
 interface SettingsItemProps {
     label: string;
@@ -25,7 +26,7 @@ export const SettingsItem: React.FC<SettingsItemProps> = ({
     const theme = useTheme();
 
     return (
-        <TouchableOpacity
+        <Touchable
             style={[styles.container, { borderBottomColor: theme.colors.neutral[200] }]}
             onPress={onPress}
             disabled={type === 'info' && !onPress}
@@ -54,7 +55,7 @@ export const SettingsItem: React.FC<SettingsItemProps> = ({
                     <Text style={[theme.typography.caption, { color: theme.colors.neutral[500] }]}>{rightText}</Text>
                 )}
             </View>
-        </TouchableOpacity>
+        </Touchable>
     );
 };
 

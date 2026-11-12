@@ -19,6 +19,7 @@ import catalogRoutes       from './routes/catalog.routes';
 import scansRoutes         from './routes/scans.routes';
 import { designsRouter }   from './routes/designs.routes';
 import subscriptionsRouter from './routes/subscriptions.routes';
+import { accountPagesRouter } from './routes/accountPages.routes';
 import notificationsRouter from './routes/notifications.routes';
 import analyticsRouter     from './routes/analytics.routes';
 // Routes — v1 design-sessions (per backend implementation guide §3)
@@ -163,6 +164,9 @@ export function createApp(): Express {
   app.use('/api/subscriptions', subscriptionsRouter);
   app.use('/api/notifications', notificationsRouter);
   app.use('/api/analytics',     analyticsRouter);
+
+  // ── Pages opened from emailed links (password reset, email confirmation) ──
+  app.use('/account', accountPagesRouter);
 
   // ── v1 API — per backend implementation guide (preferred) ─────────────────
   app.use('/v1/design-sessions', designSessionsRouter);

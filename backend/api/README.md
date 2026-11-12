@@ -15,7 +15,8 @@
 | Real-time | Socket.IO |
 | Storage | AWS S3 |
 | Payments | Stripe |
-| Push notifications | Firebase Admin (FCM / APNs) |
+| Push notifications | Expo push service (relays to APNs / FCM) |
+| Naira payments | Credo by eTranzact (hosted checkout, 30-day passes) |
 | Email | SendGrid |
 | Style vectors | Pinecone |
 

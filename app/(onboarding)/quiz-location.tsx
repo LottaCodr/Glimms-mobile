@@ -3,13 +3,13 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   ScrollView,
   TextInput,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native'
+import { Enter, Touchable } from '@/components/motion'
 import { useRouter } from 'expo-router'
 import * as Location from 'expo-location'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -72,7 +72,7 @@ export default function QuizLocationScreen() {
           </View>
 
           <Text style={styles.label}>3 OF 3</Text>
-          <Text style={styles.title}>Where are{'\n'}<Text style={styles.accent}>you based?</Text></Text>
+          <Enter><Text style={styles.title}>Where are{'\n'}<Text style={styles.accent}>you based?</Text></Text></Enter>
           <Text style={styles.sub}>For climate-aware styling recommendations</Text>
 
           <View style={styles.inputRow}>
@@ -88,14 +88,14 @@ export default function QuizLocationScreen() {
 
           <Text style={styles.cityLabel}>POPULAR CITIES</Text>
           <View style={styles.cityChips}>
-            {CITIES.map((c) => (
-              <TouchableOpacity
-                key={c}
+            {CITIES.map((c, enterIdx) => (
+              <Touchable
+                key={c} enterIndex={enterIdx}
                 onPress={() => setCity(c)}
                 style={[styles.chip, city === c && styles.chipActive]}
               >
                 <Text style={[styles.chipText, city === c && { color: Colors.gold }]}>{c}</Text>
-              </TouchableOpacity>
+              </Touchable>
             ))}
           </View>
         </ScrollView>

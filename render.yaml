@@ -1,4 +1,4 @@
-# Render blueprint for the Glimms AI services (backend/ai), all-in-one image.
+# Render blueprint for the Glimms API (backend/api) and AI services (backend/ai).
 #
 # Lives at the repository root because Render only discovers blueprints there;
 # the Docker build itself is scoped to backend/ai.
@@ -103,3 +103,94 @@ services:
         sync: false
       - key: S3_BUCKET
         sync: false
+
+  # ── API: the public backend the mobile app talks to ───────────────────────
+  # HTTP, WebSocket and the design worker run in this one process. Postgres is
+  # Supabase (not provisioned here); Redis is the Key Value instance below.
+  - type: web
+    name: glimms-api
+    runtime: docker
+    dockerfilePath: ./backend/api/Dockerfile
+    dockerContext: ./backend/api
+    buildFilter:
+      paths:
+        - backend/api/**
+    plan: starter
+    healthCheckPath: /health
+    # Forward-only migrations run before each new version takes traffic.
+    preDeployCommand: npm run db:migrate:prod
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "4000"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: REFRESH_TOKEN_SECRET
+        generateValue: true
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: glimms-redis
+          property: connectionString
+      # The AI services, over Render's private network.
+      - key: AI_INTERNAL_TOKEN
+        fromService:
+          type: pserv
+          name: glimms-ai
+          envVarKey: AI_INTERNAL_TOKEN
+      # Set these in the dashboard; never commit them.
+      - key: AI_GATEWAY_URL          # glimms-ai's internal address, e.g. http://glimms-ai:10000
+        sync: false
+      - key: PUBLIC_API_URL          # https://<this service>.onrender.com or your domain
+        sync: false
+      - key: DATABASE_URL            # Supabase session pooler (port 5432)
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: AWS_REGION
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: SENDGRID_FROM_EMAIL
+        sync: false
+      - key: GOOGLE_CLIENT_IDS
+        sync: false
+      - key: APPLE_CLIENT_IDS
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PREMIUM_PRICE_ID
+        sync: false
+      - key: STRIPE_PRO_PRICE_ID
+        sync: false
+      - key: CREDO_PUBLIC_KEY
+        sync: false
+      - key: CREDO_SECRET_KEY
+        sync: false
+      - key: CREDO_BASE_URL          # https://api.credocentral.com (live) or https://api.credodemo.com
+        sync: false
+      - key: CREDO_PREMIUM_AMOUNT    # kobo
+        sync: false
+      - key: CREDO_PRO_AMOUNT        # kobo
+        sync: false
+      - key: PINECONE_API_KEY
+        sync: false
+      - key: PINECONE_INDEX
+        sync: false
+
+  # ── Redis for queues and rate limits ──────────────────────────────────────
+  # BullMQ loses jobs if Redis evicts keys, so eviction must be off.
+  - type: keyvalue
+    name: glimms-redis
+    plan: starter
+    maxmemoryPolicy: noeviction
+    ipAllowList: []   # private network only

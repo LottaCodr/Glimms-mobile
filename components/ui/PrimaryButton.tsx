@@ -3,10 +3,10 @@ import {
     ActivityIndicator,
     StyleSheet,
     Text,
-    TouchableOpacity,
     View,
     ViewStyle,
 } from "react-native";
+import { Touchable } from "@/components/motion";
 import * as Haptics from "expo-haptics";
 import { Colors, Radius, Spacing } from "@/theme";
 import { AppIcon } from "./Icon";
@@ -37,7 +37,7 @@ export function PrimaryButton({
 }: Props) {
     const dimmed = disabled || loading;
     return (
-        <TouchableOpacity
+        <Touchable
             onPress={() => {
                 void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 onPress();
@@ -66,7 +66,7 @@ export function PrimaryButton({
                     </Text>
                 </View>
             )}
-        </TouchableOpacity>
+        </Touchable>
     );
 }
 

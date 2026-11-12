@@ -39,4 +39,11 @@ export const deviceTokensRepository = {
   async delete(userId: string, token: string, db: Queryable = getDb()): Promise<void> {
     await db.query('delete from device_tokens where user_id = $1 and token = $2', [userId, token]);
   },
+
+  /** Removes tokens the push service reports as no longer registered. */
+  async deleteTokens(tokens: string[], db: Queryable = getDb()): Promise<number> {
+    if (!tokens.length) return 0;
+    const result = await db.query('delete from device_tokens where token = any($1::text[])', [tokens]);
+    return result.rowCount;
+  },
 };

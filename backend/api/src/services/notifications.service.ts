@@ -1,80 +1,49 @@
 import { deviceTokensRepository } from '../repositories';
-import { config } from '../config';
 import { logger } from '../lib/logger';
-import * as admin from 'firebase-admin';
-import sgMail from '@sendgrid/mail';
+import { createExpoPush, ExpoPush, isExpoPushToken } from '../lib/expoPush';
+import { mailer } from '../lib/mailer';
+import { BadRequestError } from '../middleware/errorHandler.middleware';
 
-// ── Firebase Admin init (once) ────────────────────────────────────────────────
+export function createNotificationsService(push: ExpoPush = createExpoPush()) {
+  return {
+    async registerDevice(userId: string, token: string, platform: 'ios' | 'android') {
+      // Only Expo push tokens can be delivered to; storing anything else would
+      // look registered and silently never arrive.
+      if (!isExpoPushToken(token)) throw new BadRequestError('token must be an Expo push token');
+      return deviceTokensRepository.upsert({ userId, token, platform });
+    },
 
-if (config.firebase.projectId && !admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId:   config.firebase.projectId,
-      clientEmail: config.firebase.clientEmail,
-      privateKey:  config.firebase.privateKey,
-    } as admin.ServiceAccount),
-  });
-  logger.info('Firebase Admin initialised');
+    async unregisterDevice(userId: string, token: string) {
+      await deviceTokensRepository.delete(userId, token);
+    },
+
+    /** Never throws: a push is a courtesy, not part of the work that triggered it. */
+    async sendPush(userId: string, title: string, body: string, data?: Record<string, string>) {
+      try {
+        const devices = await deviceTokensRepository.listByUserId(userId);
+        const tokens = devices.map((device) => device.token).filter(isExpoPushToken);
+        if (!tokens.length) return { sent: 0 };
+
+        const result = await push.send(tokens.map((to) => ({ to, title, body, data })));
+        if (result.unregistered.length) {
+          // The app was uninstalled or notifications were revoked.
+          await deviceTokensRepository.deleteTokens(result.unregistered);
+        }
+        logger.info(
+          { userId, sent: result.sent, failed: result.failed, removed: result.unregistered.length },
+          'Push notifications dispatched',
+        );
+        return { sent: result.sent };
+      } catch (err: any) {
+        logger.warn({ userId, err: err?.message }, 'Push notification failed');
+        return { sent: 0 };
+      }
+    },
+
+    async sendEmail(to: string, subject: string, html: string) {
+      await mailer.send({ to, subject, html, text: html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() });
+    },
+  };
 }
 
-// ── SendGrid init (once) ──────────────────────────────────────────────────────
-
-if (config.sendgrid.apiKey) {
-  sgMail.setApiKey(config.sendgrid.apiKey);
-}
-
-// ── Service ───────────────────────────────────────────────────────────────────
-
-export const notificationsService = {
-
-  async registerDevice(userId: string, token: string, platform: 'ios' | 'android') {
-    return deviceTokensRepository.upsert({ userId, token, platform });
-  },
-
-  async unregisterDevice(userId: string, token: string) {
-    await deviceTokensRepository.delete(userId, token);
-  },
-
-  async sendPush(
-    userId:  string,
-    title:   string,
-    body:    string,
-    data?:   Record<string, string>,
-  ) {
-    if (!admin.apps.length) {
-      logger.warn('Firebase not configured — push notification skipped');
-      return { sent: 0 };
-    }
-
-    const deviceTokens = await deviceTokensRepository.listByUserId(userId);
-    if (!deviceTokens.length) return { sent: 0 };
-
-    const results = await Promise.allSettled(
-      deviceTokens.map(({ token }) =>
-        admin.messaging().send({
-          token,
-          notification: { title, body },
-          data:         data ?? {},
-          apns: {
-            payload: { aps: { sound: 'default', badge: 1 } },
-          },
-          android: { priority: 'high' },
-        })
-      ),
-    );
-
-    const sent   = results.filter(r => r.status === 'fulfilled').length;
-    const failed = results.filter(r => r.status === 'rejected').length;
-    logger.info({ userId, sent, failed }, 'Push notifications dispatched');
-    return { sent };
-  },
-
-  async sendEmail(to: string, subject: string, html: string) {
-    if (!config.sendgrid.apiKey) {
-      logger.warn('SendGrid not configured — email skipped');
-      return;
-    }
-    await sgMail.send({ to, from: config.sendgrid.fromEmail, subject, html });
-    logger.info({ to }, 'Email sent');
-  },
-};
+export const notificationsService = createNotificationsService();
