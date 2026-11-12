@@ -17,8 +17,7 @@ afterAll(async () => { await database.close(); });
 beforeEach(async () => { await database.reset(); });
 
 const TABLES = [
-  'catalog_items', 'design_jobs', 'design_sessions', 'device_tokens', 'refresh_tokens',
-  'saved_designs', 'subscriptions', 'user_preferences', 'users',
+  'account_erasures', 'account_tokens', 'catalog_items', 'credo_payments', 'design_jobs', 'design_sessions', 'device_tokens', 'refresh_tokens', 'saved_designs', 'stripe_events', 'subscriptions', 'user_preferences', 'users',
 ];
 
 async function sqlState(run: Promise<unknown>): Promise<string | undefined> {

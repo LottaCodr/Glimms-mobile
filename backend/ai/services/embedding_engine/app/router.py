@@ -72,6 +72,11 @@ class DeleteRequest(BaseModel):
     namespace: str | None = Field(default=None, max_length=100)
 
 
+class DeleteOwnerRequest(BaseModel):
+    user_id: str = Field(..., min_length=1, max_length=200)
+    namespace: str | None = Field(default=None, max_length=100)
+
+
 def _guard_durable_store() -> None:
     """Refuse to act as a system of record when the store is in-process.
 
@@ -136,5 +141,18 @@ async def delete(body: DeleteRequest) -> dict[str, Any]:
     try:
         deleted = store.delete(body.ids, namespace=body.namespace)
         return {"deleted_count": deleted, "namespace": body.namespace or store.namespace}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="vector store unavailable") from exc
+
+
+@router.delete("/vectors/by-user")
+async def delete_by_user(body: DeleteOwnerRequest) -> dict[str, Any]:
+    """Remove every vector owned by a user. Used when an account is deleted."""
+    _guard_durable_store()
+    try:
+        deleted = store.delete_owner(body.user_id, namespace=body.namespace)
+        return {"deleted_count": deleted, "namespace": body.namespace or store.namespace}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail="vector store unavailable") from exc

@@ -364,7 +364,8 @@ async function runSessionPipeline(job: Job<any>): Promise<void> {
     const vectors = enrichedItems
       .filter((it:any)=> Array.isArray(it.embedding) && it.embedding.length)
       .map((it:any)=> ({
-        id: it.id,
+        // Prefixed with the owner so a deleted account's vectors can be found.
+        id: `${userId}:${it.id}`,
         embedding: it.embedding,
         metadata: {
           user_id: userId,

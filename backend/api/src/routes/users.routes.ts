@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { usersService } from '../services/users.service';
+import { accountService } from '../services/accountDeletion';
 import { requireAuth, AuthRequest } from '../middleware/auth.middleware';
 import { validateBody } from '../middleware/validate.middleware';
 
@@ -38,7 +39,8 @@ router.patch('/me', requireAuth, validateBody(updateUserSchema), async (req: Aut
 
 // DELETE /api/users/me
 router.delete('/me', requireAuth, async (req: AuthRequest, res) => {
-  const result = await usersService.deactivate(req.user!.sub);
+  // Permanent: cancels billing, deletes the account and erases its files.
+  const result = await accountService.deleteAccount(req.user!.sub);
   res.json(result);
 });
 

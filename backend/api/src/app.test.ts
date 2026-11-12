@@ -21,7 +21,25 @@ jest.mock('./middleware/rateLimiter.middleware', () => {
   return { generalLimiter: pass, authLimiter: pass, scanLimiter: pass };
 });
 
+// Account deletion reaches Stripe, S3 and the vector store; here those are fakes.
+const erased = { prefixes: [] as string[], vectors: [] as string[] };
+jest.mock('./services/accountDeletion', () => {
+  const { createAccountService } = jest.requireActual('./services/account.service');
+  return {
+    accountService: createAccountService({
+      deleteStripeCustomer: null,
+      deleteStoragePrefix: async (prefix: string) => { erased.prefixes.push(prefix); return 0; },
+      deleteVectors: async (userId: string) => { erased.vectors.push(userId); },
+    }),
+  };
+});
+jest.mock('./lib/mailer', () => {
+  const actual = jest.requireActual('./lib/mailer');
+  return { ...actual, mailer: { isConfigured: () => true, send: jest.fn().mockResolvedValue(undefined) } };
+});
+
 import { createApp } from './app';
+import { mailer } from './lib/mailer';
 
 const app = createApp();
 let database: TestDatabase;
@@ -212,7 +230,7 @@ describe('response contract (unchanged by the move to Postgres)', () => {
     const res = await request(app).get('/api/users/me').set('Authorization', `Bearer ${token}`);
 
     expect(Object.keys(res.body).sort()).toEqual(
-      ['avatarUrl', 'createdAt', 'email', 'id', 'isActive', 'name', 'tier', 'updatedAt'],
+      ['avatarUrl', 'createdAt', 'email', 'emailVerifiedAt', 'id', 'isActive', 'name', 'tier', 'updatedAt'],
     );
     expect(res.body.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(new Date(res.body.createdAt).toISOString()).toBe(res.body.createdAt);
@@ -264,7 +282,7 @@ describe('response contract (unchanged by the move to Postgres)', () => {
   it('registers a device token once per device and re-points it on re-register', async () => {
     const first = await registerUser('device1@glimms.ai');
     const second = await registerUser('device2@glimms.ai');
-    const body = { token: 'fcm-token-1', platform: 'android' };
+    const body = { token: 'ExponentPushToken[device-1]', platform: 'android' };
 
     const a = await request(app).post('/api/notifications/device-token').set('Authorization', `Bearer ${first}`).send(body);
     const b = await request(app).post('/api/notifications/device-token').set('Authorization', `Bearer ${second}`).send(body);
@@ -305,16 +323,172 @@ describe('ids and tokens from before the migration', () => {
   });
 });
 
-describe('account deactivation', () => {
-  it('soft-deletes: the row stays, login stops working', async () => {
+/** The one-time link from the most recent email to `to`. */
+function lastEmailedLink(to: string): URL {
+  const sent = (mailer.send as jest.Mock).mock.calls.map(([mail]) => mail).filter((mail) => mail.to === to);
+  const match = /https?:\/\/\S+/.exec(sent[sent.length - 1].text);
+  return new URL(match![0]);
+}
+const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+describe('account deletion', () => {
+  it('removes the account and everything it owns, and erases its files', async () => {
     const token = await registerUser('leaving@glimms.ai');
-    const res = await request(app).delete('/api/users/me').set('Authorization', `Bearer ${token}`);
+    const auth = { Authorization: `Bearer ${token}` };
+    const me = await request(app).get('/api/users/me').set(auth);
+    await request(app).post('/api/catalog').set(auth).send({
+      vertical: 'wardrobe', label: 'white shirt', category: 'top',
+      color: { dominant: { hex: '#ffffff', rgb: { r: 255, g: 255, b: 255 } } },
+      imageKey: 'uploads/test/shirt.jpg', confidence: 0.9,
+    });
+    await request(app).post('/api/notifications/device-token').set(auth)
+      .send({ token: 'ExponentPushToken[leaving]', platform: 'ios' });
+
+    const res = await request(app).delete('/api/users/me').set(auth);
     expect(res.status).toBe(200);
+    await settle();
+
+    for (const table of ['users', 'catalog_items', 'device_tokens', 'refresh_tokens', 'account_tokens']) {
+      const column = table === 'users' ? 'id' : 'user_id';
+      const { rows } = await database.db.query(`select count(*)::int as n from ${table} where ${column} = $1`, [me.body.id]);
+      expect({ table, n: rows[0].n }).toEqual({ table, n: 0 });
+    }
+    expect(erased.prefixes).toEqual(expect.arrayContaining([`users/${me.body.id}/`, `uploads/${me.body.id}/`]));
+    expect(erased.vectors).toContain(me.body.id);
 
     const login = await request(app).post('/api/auth/login').send({ email: 'leaving@glimms.ai', password: 'password123' });
     expect(login.status).toBe(401);
-    const { rows } = await database.db.query("select is_active from users where email = 'leaving@glimms.ai'");
-    expect(rows).toEqual([{ is_active: false }]);
+    // The address is free to register again.
+    const again = await request(app).post('/api/auth/register').send({ email: 'leaving@glimms.ai', password: 'password123' });
+    expect(again.status).toBe(201);
+  });
+
+  it('requires authentication', async () => {
+    expect((await request(app).delete('/api/users/me')).status).toBe(401);
+  });
+});
+
+describe('password reset', () => {
+  it('answers the same for known and unknown addresses, and only emails the known one', async () => {
+    await registerUser('known@glimms.ai');
+    (mailer.send as jest.Mock).mockClear();
+
+    const known = await request(app).post('/api/auth/forgot-password').send({ email: 'known@glimms.ai' });
+    const unknown = await request(app).post('/api/auth/forgot-password').send({ email: 'nobody@glimms.ai' });
+    await settle();
+
+    expect(known.status).toBe(200);
+    expect(unknown.status).toBe(200);
+    expect(unknown.body).toEqual(known.body);
+    expect((mailer.send as jest.Mock).mock.calls.map(([mail]) => mail.to)).toEqual(['known@glimms.ai']);
+  });
+
+  it('lets the user choose a new password from the emailed page, once', async () => {
+    await registerUser('forgetful@glimms.ai');
+    const before = await request(app).post('/api/auth/login').send({ email: 'forgetful@glimms.ai', password: 'password123' });
+    await request(app).post('/api/auth/forgot-password').send({ email: 'forgetful@glimms.ai' });
+    await settle();
+    const link = lastEmailedLink('forgetful@glimms.ai');
+    expect(link.origin).toBe('https://api.glimms.test');
+    const token = link.searchParams.get('token')!;
+
+    const form = await request(app).get(link.pathname + link.search);
+    expect(form.status).toBe(200);
+    expect(form.headers['content-type']).toContain('text/html');
+    expect(form.headers['cache-control']).toBe('no-store');
+    expect(form.text).toContain('name="password"');
+
+    const mismatch = await request(app).post('/account/reset-password').type('form')
+      .send({ token, password: 'brand-new-pass', confirm: 'something-else' });
+    expect(mismatch.status).toBe(400);
+    expect(mismatch.text).toContain('do not match');
+
+    const done = await request(app).post('/account/reset-password').type('form')
+      .send({ token, password: 'brand-new-pass', confirm: 'brand-new-pass' });
+    expect(done.status).toBe(200);
+    expect(done.text).toContain('Password updated');
+
+    const oldLogin = await request(app).post('/api/auth/login').send({ email: 'forgetful@glimms.ai', password: 'password123' });
+    const newLogin = await request(app).post('/api/auth/login').send({ email: 'forgetful@glimms.ai', password: 'brand-new-pass' });
+    expect(oldLogin.status).toBe(401);
+    expect(newLogin.status).toBe(200);
+
+    // Sessions from before the reset are signed out.
+    const refresh = await request(app).post('/api/auth/refresh').send({ refreshToken: before.body.refreshToken });
+    expect(refresh.status).toBe(401);
+
+    // The link cannot be used a second time.
+    const reuse = await request(app).post('/api/auth/reset-password').send({ token, password: 'attacker-pass-1' });
+    expect(reuse.status).toBe(400);
+    expect(reuse.body.code).toBe('INVALID_TOKEN');
+    expect((await request(app).get(link.pathname + link.search)).status).toBe(400);
+  });
+
+  it('rejects unknown tokens and short passwords', async () => {
+    const bad = await request(app).post('/api/auth/reset-password').send({ token: 'not-a-token', password: 'long-enough-pass' });
+    expect(bad.status).toBe(400);
+    const short = await request(app).post('/api/auth/reset-password').send({ token: 'x', password: 'short' });
+    expect(short.status).toBe(400);
+  });
+
+  it('escapes the token it echoes into the page', async () => {
+    const res = await request(app).get('/account/verify-email').query({ token: '"><script>alert(1)</script>' });
+    expect(res.text).not.toContain('<script>');
+  });
+});
+
+describe('email verification', () => {
+  it('confirms the address from the emailed link, by POST only', async () => {
+    const token = await registerUser('verify@glimms.ai');
+    const auth = { Authorization: `Bearer ${token}` };
+    await settle();
+    expect((await request(app).get('/api/users/me').set(auth)).body.emailVerifiedAt).toBeNull();
+
+    const link = lastEmailedLink('verify@glimms.ai');
+    // Opening the link (as a mail scanner would) confirms nothing.
+    expect((await request(app).get(link.pathname + link.search)).status).toBe(200);
+    expect((await request(app).get('/api/users/me').set(auth)).body.emailVerifiedAt).toBeNull();
+
+    const confirm = await request(app).post('/account/verify-email').type('form')
+      .send({ token: link.searchParams.get('token') });
+    expect(confirm.status).toBe(200);
+    expect((await request(app).get('/api/users/me').set(auth)).body.emailVerifiedAt).toEqual(expect.any(String));
+
+    const resend = await request(app).post('/api/auth/resend-verification').set(auth);
+    expect(resend.body.alreadyVerified).toBe(true);
+  });
+
+  it('re-sends the email on request, invalidating the earlier link', async () => {
+    const token = await registerUser('resend@glimms.ai');
+    await settle();
+    const first = lastEmailedLink('resend@glimms.ai').searchParams.get('token');
+
+    const resend = await request(app).post('/api/auth/resend-verification').set('Authorization', `Bearer ${token}`);
+    expect(resend.status).toBe(200);
+    await settle();
+    const second = lastEmailedLink('resend@glimms.ai').searchParams.get('token');
+    expect(second).not.toBe(first);
+
+    expect((await request(app).post('/api/auth/verify-email').send({ token: first })).status).toBe(400);
+    expect((await request(app).post('/api/auth/verify-email').send({ token: second })).status).toBe(200);
+  });
+});
+
+describe('push device tokens', () => {
+  it('accepts only Expo push tokens', async () => {
+    const token = await registerUser('push-format@glimms.ai');
+    const res = await request(app).post('/api/notifications/device-token')
+      .set('Authorization', `Bearer ${token}`).send({ token: 'raw-apns-or-fcm-token', platform: 'ios' });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('social sign-in (not configured)', () => {
+  it('refuses tokens when no client ids are configured', async () => {
+    const google = await request(app).post('/api/auth/google').send({ idToken: 'a.b.c' });
+    const apple = await request(app).post('/api/auth/apple').send({ identityToken: 'a.b.c' });
+    expect(google.status).toBe(401);
+    expect(apple.status).toBe(401);
   });
 });
 
@@ -361,5 +535,35 @@ describe('subscription billing endpoints (Stripe not configured)', () => {
     const signed = await request(app).post('/api/subscriptions/webhook')
       .set('Content-Type', 'application/json').set('Stripe-Signature', 't=1,v1=abc').send('{}');
     expect(signed.status).toBe(503);
+  });
+});
+
+describe('Credo endpoints (not configured)', () => {
+  it('lists no plans, publicly', async () => {
+    const res = await request(app).get('/api/subscriptions/credo/plans');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ plans: [] });
+  });
+
+  it('requires authentication to pay or confirm, and answers 503 when switched off', async () => {
+    expect((await request(app).post('/api/subscriptions/credo/checkout').send({ tier: 'premium' })).status).toBe(401);
+    expect((await request(app).post('/api/subscriptions/credo/confirm').send({ reference: 'x' })).status).toBe(401);
+
+    const token = await registerUser('naira@glimms.ai');
+    const res = await request(app).post('/api/subscriptions/credo/checkout')
+      .set('Authorization', `Bearer ${token}`).send({ tier: 'premium' });
+    expect(res.status).toBe(503);
+    expect(res.body.code).toBe('BILLING_NOT_CONFIGURED');
+
+    const webhook = await request(app).post('/api/subscriptions/credo/webhook').send({ event: 'transaction.successful', data: {} });
+    expect(webhook.status).toBe(503);
+  });
+
+  it('shows a return page that sends the browser back to the app without trusting the query', async () => {
+    const res = await request(app).get('/account/credo/return').query({ transRef: '"><script>x</script>' });
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Payment not found');
+    expect(res.text).not.toContain('<script>');
+    expect(res.headers.refresh).toBe('0; url=glimms://billing/return?status=unknown');
   });
 });

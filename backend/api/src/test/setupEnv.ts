@@ -9,3 +9,4 @@ process.env.BCRYPT_ROUNDS ??= '4';
 // setupTestDatabase(). Present because config requires it when a test switches
 // NODE_ENV to production.
 process.env.DATABASE_URL ??= 'postgresql://unused:unused@localhost:5432/unused';
+process.env.PUBLIC_API_URL ??= 'https://api.glimms.test';

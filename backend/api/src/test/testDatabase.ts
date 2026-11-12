@@ -53,6 +53,7 @@ async function createExternalDatabase(connectionString: string): Promise<Databas
 }
 
 const TABLES = [
+  'credo_payments', 'account_tokens', 'stripe_events', 'account_erasures',
   'saved_designs', 'design_sessions', 'design_jobs', 'catalog_items', 'device_tokens',
   'subscriptions', 'user_preferences', 'refresh_tokens', 'users',
 ];

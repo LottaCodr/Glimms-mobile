@@ -7,3 +7,7 @@ export { designJobsRepository } from './designJobs.repository';
 export { savedDesignsRepository } from './savedDesigns.repository';
 export { designSessionsRepository } from './designSessions.repository';
 export { deviceTokensRepository } from './deviceTokens.repository';
+export { accountTokensRepository } from './accountTokens.repository';
+export { stripeEventsRepository } from './stripeEvents.repository';
+export { accountErasuresRepository } from './accountErasures.repository';
+export * from './credoPayments.repository';

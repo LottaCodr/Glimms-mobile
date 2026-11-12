@@ -5,7 +5,9 @@ import { config } from './config';
 import { logger } from './lib/logger';
 import { connectDb, disconnectDb, getDb } from './db';
 import { runMigrations } from './db/migrate';
-import { refreshTokensRepository } from './repositories';
+import { accountTokensRepository, refreshTokensRepository, stripeEventsRepository } from './repositories';
+import { accountService } from './services/accountDeletion';
+import { credoService } from './services/credo.service';
 import { connectRedis, redis } from './lib/redis';
 import { createWebSocketServer } from './websocket';
 import { startDesignWorker, setIO } from './workers/design.worker';
@@ -16,11 +18,37 @@ const TOKEN_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
  * Expired refresh tokens are useless but accumulate (Mongo's TTL index used to
  * remove them). Sweep at boot and hourly; failures only cost disk, so just log.
  */
+const BILLING_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+
+/** Ends finished Credo passes and settles payments whose notifications were missed. */
+function startBillingSweep(): NodeJS.Timeout {
+  const sweep = () => {
+    credoService.expirePasses()
+      .then((ended) => { if (ended > 0) logger.info({ ended }, 'Credo passes ended'); })
+      .catch((err) => logger.warn({ err }, 'Credo pass expiry failed'));
+    credoService.reconcilePending()
+      .catch((err) => logger.warn({ err }, 'Credo reconcile failed'));
+  };
+  sweep();
+  const timer = setInterval(sweep, BILLING_SWEEP_INTERVAL_MS);
+  timer.unref();
+  return timer;
+}
+
 function startRefreshTokenSweep(): NodeJS.Timeout {
   const sweep = () => {
     refreshTokensRepository.deleteExpired()
       .then((removed) => { if (removed > 0) logger.info({ removed }, 'Expired refresh tokens removed'); })
       .catch((err) => logger.warn({ err }, 'Refresh token sweep failed'));
+    accountTokensRepository.deleteExpired()
+      .catch((err) => logger.warn({ err }, 'Account token sweep failed'));
+    // Stripe retries a webhook for up to three days; keep ids well past that.
+    stripeEventsRepository.deleteOlderThan(30)
+      .catch((err) => logger.warn({ err }, 'Stripe event sweep failed'));
+    // Finish erasing the files of deleted accounts whose first attempt failed.
+    accountService.sweepErasures()
+      .then((done) => { if (done > 0) logger.info({ done }, 'Pending account erasures completed'); })
+      .catch((err) => logger.warn({ err }, 'Account erasure sweep failed'));
   };
   sweep();
   const timer = setInterval(sweep, TOKEN_SWEEP_INTERVAL_MS);
@@ -36,6 +64,7 @@ async function bootstrap() {
     logger.info({ applied: applied.length }, 'Database migrations up to date');
   }
   const tokenSweep = startRefreshTokenSweep();
+  const billingSweep = startBillingSweep();
 
   // ── 2. Connect to Redis ───────────────────────────────────────────────────
   await connectRedis();
@@ -80,6 +109,7 @@ async function bootstrap() {
     httpServer.close(async () => {
       try {
         clearInterval(tokenSweep);
+        clearInterval(billingSweep);
         await worker.close();     // drain in-flight jobs
         await disconnectDb();     // close the Postgres pool
         await redis.quit();       // close Redis connection

@@ -1,6 +1,7 @@
 import Stripe from 'stripe';
 import { getDb } from '../db';
-import { subscriptionsRepository, usersRepository } from '../repositories';
+import type { Transaction } from '../db';
+import { stripeEventsRepository, subscriptionsRepository, usersRepository } from '../repositories';
 import type { SubStatus, Tier } from '../models';
 import { config } from '../config';
 import { logger } from '../lib/logger';
@@ -110,6 +111,102 @@ export function createSubscriptionsService(stripe: StripeClient | null, settings
     return 'free';
   }
 
+  /** The live subscription from Stripe, or null when Stripe no longer has it. */
+  async function retrieveSubscription(client: StripeClient, subscriptionId: string): Promise<any | null> {
+    try {
+      return await client.subscriptions.retrieve(subscriptionId);
+    } catch (err: any) {
+      if (err?.code === 'resource_missing' || err?.statusCode === 404) return null;
+      throw err;
+    }
+  }
+
+  /**
+   * Brings our row in line with a Stripe subscription's current state.
+   *
+   * Webhooks can arrive late and out of order, so the state applied is the one
+   * read from Stripe now, never the snapshot inside the event. `ended` forces
+   * the terminal outcome for a deletion event.
+   */
+  async function syncSubscription(
+    client: StripeClient,
+    customerId: string,
+    subscriptionId: string,
+    tx: Transaction,
+    ended = false,
+  ): Promise<void> {
+    const row = await subscriptionsRepository.findByStripeCustomerId(customerId, tx);
+    if (!row) return; // not one of our customers (or the account was deleted)
+
+    const live = ended ? null : await retrieveSubscription(client, subscriptionId);
+    const stripeStatus: string = live?.status ?? 'canceled';
+    const terminal = stripeStatus === 'canceled' || stripeStatus === 'incomplete_expired';
+    const inGoodStanding = stripeStatus === 'active' || stripeStatus === 'trialing' || stripeStatus === 'past_due';
+
+    // News about a subscription other than the one on record only matters if
+    // it is a live one taking over; an old subscription ending or lapsing must
+    // not downgrade a user who has since bought a new one.
+    const superseded = row.provider === 'credo'
+      ? row.status === 'active' // a Credo pass is running; an old Stripe subscription ending changes nothing
+      : !!row.stripeSubscriptionId && row.stripeSubscriptionId !== subscriptionId;
+    if (superseded && !inGoodStanding) {
+      logger.info({ userId: row.userId, subscriptionId }, 'Ignoring update for a superseded subscription');
+      return;
+    }
+
+    if (terminal) {
+      await subscriptionsRepository.updateByStripeCustomerId(
+        customerId, { status: 'cancelled', stripeSubscriptionId: null, cancelAtPeriodEnd: false }, tx,
+      );
+      await usersRepository.update(row.userId, { tier: 'free' }, tx);
+      logger.info({ userId: row.userId }, 'Subscription ended — user is on the free tier');
+      return;
+    }
+
+    // Trials are paid plans in good standing; past_due keeps the tier during
+    // Stripe's retry window; anything else (incomplete, unpaid, paused) grants nothing.
+    const status: SubStatus = stripeStatus === 'active' || stripeStatus === 'trialing' ? 'active'
+      : stripeStatus === 'past_due' ? 'past_due' : 'inactive';
+    const tier: Tier = status === 'inactive' ? 'free' : tierOfSubscription(live);
+
+    // Subscription state and the user's tier change together or not at all.
+    await subscriptionsRepository.updateByStripeCustomerId(customerId, {
+      stripeSubscriptionId: live.id,
+      provider:             'stripe',
+      status,
+      currentPeriodEnd:     live.current_period_end ? new Date(live.current_period_end * 1000) : null,
+      cancelAtPeriodEnd:    live.cancel_at_period_end ?? false,
+    }, tx);
+    await usersRepository.update(row.userId, { tier }, tx);
+    logger.info({ userId: row.userId, tier, status }, 'Subscription synced from Stripe');
+  }
+
+  async function applyEvent(client: StripeClient, event: Stripe.Event, tx: Transaction): Promise<void> {
+    const object = event.data.object as any;
+    switch (event.type) {
+      case 'customer.subscription.created':
+      case 'customer.subscription.updated':
+        await syncSubscription(client, object.customer as string, object.id, tx);
+        break;
+
+      case 'customer.subscription.deleted':
+        await syncSubscription(client, object.customer as string, object.id, tx, true);
+        break;
+
+      case 'invoice.payment_failed':
+      case 'invoice.payment_succeeded':
+        if (object.subscription) {
+          await syncSubscription(client, object.customer as string, String(object.subscription), tx);
+        } else if (event.type === 'invoice.payment_failed') {
+          await subscriptionsRepository.updateByStripeCustomerId(object.customer as string, { status: 'past_due' }, tx);
+        }
+        break;
+
+      default:
+        logger.debug({ type: event.type }, 'Unhandled Stripe webhook event — ignored');
+    }
+  }
+
   return {
 
   /** Never 404s: a user without a subscription row is simply on the free plan. */
@@ -124,6 +221,7 @@ export function createSubscriptionsService(stripe: StripeClient | null, settings
         userId,
         status: 'inactive',
         tier,
+        provider: null,
         stripeCustomerId: null,
         stripeSubscriptionId: null,
         currentPeriodEnd: null,
@@ -178,6 +276,10 @@ export function createSubscriptionsService(stripe: StripeClient | null, settings
       throw new ConflictError('You already have a subscription. Manage it from billing settings.');
     }
 
+    if (current?.provider === 'credo' && current.status === 'active') {
+      throw new ConflictError('You already have an active plan. You can switch when it ends.');
+    }
+
     const customerId = await ensureCustomer(stripe, userId);
     const session = await stripe.checkout.sessions.create({
       customer:            customerId,
@@ -225,81 +327,35 @@ export function createSubscriptionsService(stripe: StripeClient | null, settings
       throw new BadRequestError('Invalid Stripe signature');
     }
 
-    logger.info({ type: event.type }, 'Stripe webhook received');
+    logger.info({ type: event.type, id: event.id }, 'Stripe webhook received');
 
-    switch (event.type) {
-      case 'customer.subscription.created':
-      case 'customer.subscription.updated': {
-        const s     = event.data.object as any;
-        // Trials are paid plans in good standing; everything else that is not
-        // past_due (incomplete, unpaid, paused…) grants nothing.
-        const status: SubStatus = s.status === 'active' || s.status === 'trialing' ? 'active'
-          : s.status === 'past_due' ? 'past_due' : 'inactive';
-        // Access follows payment state: past_due keeps the tier during
-        // Stripe's retry window, inactive loses it.
-        const resolvedTier: Tier = status === 'inactive' ? 'free' : tierOfSubscription(s);
-
-        // Subscription state and the user's tier must never disagree, so they
-        // change together or not at all.
-        const subscription = await getDb().transaction(async (tx) => {
-          const updated = await subscriptionsRepository.updateByStripeCustomerId(s.customer as string, {
-            stripeSubscriptionId: s.id,
-            status,
-            currentPeriodEnd:     s.current_period_end ? new Date(s.current_period_end * 1000) : null,
-            cancelAtPeriodEnd:    s.cancel_at_period_end ?? false,
-          }, tx);
-          if (updated) await usersRepository.update(updated.userId, { tier: resolvedTier }, tx);
-          return updated;
-        });
-        if (subscription) {
-          logger.info({ userId: subscription.userId, tier: resolvedTier }, 'User tier updated via webhook');
-        }
-        break;
+    // Stripe delivers at least once. The event id is recorded in the same
+    // transaction as its effects, so a redelivery is acknowledged and skipped,
+    // while an event whose handling failed is not recorded and gets retried.
+    return getDb().transaction(async (tx) => {
+      if (!(await stripeEventsRepository.recordOnce(event.id, event.type, tx))) {
+        logger.info({ id: event.id }, 'Stripe webhook already processed — skipped');
+        return { received: true, duplicate: true };
       }
+      await applyEvent(stripe, event, tx);
+      return { received: true };
+    });
+  },
 
-      case 'customer.subscription.deleted': {
-        const s = event.data.object as any;
-        const subscription = await getDb().transaction(async (tx) => {
-          const updated = await subscriptionsRepository.updateByStripeCustomerId(
-            s.customer as string,
-            { status: 'cancelled', stripeSubscriptionId: null },
-            tx,
-          );
-          if (updated) await usersRepository.update(updated.userId, { tier: 'free' }, tx);
-          return updated;
-        });
-        if (subscription) {
-          logger.info({ userId: subscription.userId }, 'User downgraded to free after subscription deleted');
-        }
-        break;
-      }
-
-      case 'invoice.payment_failed': {
-        const inv = event.data.object as any;
-        const customerId = inv.customer as string;
-        await subscriptionsRepository.updateByStripeCustomerId(customerId, { status: 'past_due' });
-        logger.warn({ customerId }, 'Invoice payment failed — subscription marked past_due');
-        break;
-      }
-
-      case 'invoice.payment_succeeded': {
-        const inv = event.data.object as any;
-        if (inv.subscription) {
-          // Payment succeeded — ensure active
-          const s = await stripe.subscriptions.retrieve(inv.subscription);
-          await subscriptionsRepository.updateByStripeCustomerId(
-            inv.customer as string,
-            { status: s.status === 'active' || s.status === 'trialing' ? 'active' : 'inactive' },
-          );
-        }
-        break;
-      }
-
-      default:
-        logger.debug({ type: event.type }, 'Unhandled Stripe webhook event — ignored');
+  /** Deletes the Stripe customer; Stripe cancels all of their subscriptions with it. */
+  async deleteCustomer(customerId: string): Promise<void> {
+    if (!stripe) throw billingUnavailable();
+    try {
+      await stripe.customers.del(customerId);
+    } catch (err: any) {
+      // Already gone is the outcome we wanted.
+      if (err?.code === 'resource_missing' || err?.statusCode === 404) return;
+      throw err;
     }
+  },
 
-    return { received: true };
+  isConfigured(): boolean {
+    return !!stripe;
   },
   };
 }

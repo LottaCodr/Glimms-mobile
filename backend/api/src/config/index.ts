@@ -80,9 +80,35 @@ const schema = z.object({
   STRIPE_FREE_SCAN_LIMIT:      z.string().default('10'),
   STRIPE_PREMIUM_SCAN_LIMIT:   z.string().default('100'),
 
-  FIREBASE_PROJECT_ID:    z.string().optional(),
-  FIREBASE_CLIENT_EMAIL:  z.string().optional(),
-  FIREBASE_PRIVATE_KEY:   z.string().optional(),
+  // Credo (eTranzact) — naira card and bank-transfer payments. Credo has no
+  // recurring billing: a payment buys CREDO_PERIOD_DAYS of a tier.
+  // Sandbox: https://api.credodemo.com   Live: https://api.credocentral.com
+  CREDO_PUBLIC_KEY:          blankAsUndefined(z.string().optional()),
+  CREDO_SECRET_KEY:          blankAsUndefined(z.string().optional()),
+  CREDO_BASE_URL:            blankAsUndefined(z.string().url().default('https://api.credocentral.com')),
+  CREDO_CURRENCY:            blankAsUndefined(z.enum(['NGN', 'USD']).default('NGN')),
+  // Price of one period, in the minor unit (kobo): 250000 = ₦2,500.00.
+  CREDO_PREMIUM_AMOUNT:      blankAsUndefined(z.coerce.number().int().positive().optional()),
+  CREDO_PRO_AMOUNT:          blankAsUndefined(z.coerce.number().int().positive().optional()),
+  CREDO_PERIOD_DAYS:         blankAsUndefined(z.coerce.number().int().positive().max(366).default(30)),
+  // 0 = the customer pays Credo's fee on top, 1 = it comes out of our share.
+  CREDO_FEE_BEARER:          blankAsUndefined(z.enum(['0', '1']).default('1')),
+  // Where the browser goes after payment so the app regains focus.
+  CREDO_APP_RETURN_URL:      blankAsUndefined(z.string().default('glimms://billing/return')),
+
+  // Push goes through Expo's push service. The access token is only needed when
+  // "Enhanced Security for Push Notifications" is on for the Expo project.
+  EXPO_ACCESS_TOKEN:      blankAsUndefined(z.string().optional()),
+
+  // Public https origin of this API, used in the links emailed to users
+  // (password reset, email verification). Mandatory in production.
+  PUBLIC_API_URL:         blankAsUndefined(z.string().url().optional()),
+
+  // Social sign-in. Comma-separated OAuth client ids whose ID tokens are
+  // accepted: for Google the iOS, Android and web client ids; for Apple the
+  // app's bundle id (and the Services ID if a web flow is used).
+  GOOGLE_CLIENT_IDS:      blankAsUndefined(z.string().optional()),
+  APPLE_CLIENT_IDS:       blankAsUndefined(z.string().optional()),
 
   SENDGRID_API_KEY:       z.string().optional(),
   SENDGRID_FROM_EMAIL:    z.string().default('hello@glimms.ai'),
@@ -103,6 +129,9 @@ const schema = z.object({
   GLIMMS_INTERNAL_TOKEN:   blankAsUndefined(z.string().optional()),
 });
 
+const csv = (value: string | undefined): string[] =>
+  (value ?? '').split(',').map((entry) => entry.trim()).filter(Boolean);
+
 const parsed = schema.safeParse(process.env);
 if (!parsed.success) {
   console.error('\n❌  Invalid environment variables:\n');
@@ -118,6 +147,11 @@ const LOCAL_DATABASE_URL = 'postgresql://postgres:postgres@localhost:5432/glimms
 
 if (e.NODE_ENV === 'production' && !e.DATABASE_URL) {
   console.error('\n❌  DATABASE_URL is required in production (Supabase Postgres connection string).\n');
+  process.exit(1);
+}
+
+if (e.NODE_ENV === 'production' && !e.PUBLIC_API_URL) {
+  console.error('\n❌  PUBLIC_API_URL is required in production (https origin of this API, used in emailed links).\n');
   process.exit(1);
 }
 
@@ -227,10 +261,25 @@ export const config = {
     premiumScanLimit: parseInt(e.STRIPE_PREMIUM_SCAN_LIMIT),
   },
 
-  firebase: {
-    projectId:   e.FIREBASE_PROJECT_ID,
-    clientEmail: e.FIREBASE_CLIENT_EMAIL,
-    privateKey:  e.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+  credo: {
+    publicKey:    e.CREDO_PUBLIC_KEY,
+    secretKey:    e.CREDO_SECRET_KEY,
+    baseUrl:      e.CREDO_BASE_URL.replace(/\/+$/, ''),
+    currency:     e.CREDO_CURRENCY,
+    amounts:      { premium: e.CREDO_PREMIUM_AMOUNT, pro: e.CREDO_PRO_AMOUNT },
+    periodDays:   e.CREDO_PERIOD_DAYS,
+    feeBearer:    Number(e.CREDO_FEE_BEARER) as 0 | 1,
+    appReturnUrl: e.CREDO_APP_RETURN_URL,
+  },
+
+  expo: { accessToken: e.EXPO_ACCESS_TOKEN },
+
+  /** Origin for emailed links; falls back to localhost outside production. */
+  publicApiUrl: (e.PUBLIC_API_URL ?? `http://localhost:${e.PORT}`).replace(/\/+$/, ''),
+
+  social: {
+    googleClientIds: csv(e.GOOGLE_CLIENT_IDS),
+    appleClientIds:  csv(e.APPLE_CLIENT_IDS),
   },
 
   sendgrid: {
