@@ -8,6 +8,6 @@ export { savedDesignsRepository } from './savedDesigns.repository';
 export { designSessionsRepository } from './designSessions.repository';
 export { deviceTokensRepository } from './deviceTokens.repository';
 export { accountTokensRepository } from './accountTokens.repository';
-export { stripeEventsRepository } from './stripeEvents.repository';
+export { paystackEventsRepository } from './paystackEvents.repository';
 export { accountErasuresRepository } from './accountErasures.repository';
 export * from './credoPayments.repository';

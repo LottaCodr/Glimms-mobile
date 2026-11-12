@@ -7,11 +7,13 @@ import { validateBody } from '../middleware/validate.middleware';
 
 const router = Router();
 
-// A plan is named by tier (preferred) or by the price id from GET /prices.
+// A plan is named by tier (preferred) or by the plan code from GET /prices.
 const checkoutSchema = z.object({
-  priceId: z.string().regex(/^price_[A-Za-z0-9]+$/, 'must be a Stripe price id').optional(),
-  tier:    z.enum(['premium', 'pro']).optional(),
-}).refine((body) => body.priceId || body.tier, { message: 'priceId or tier is required', path: ['priceId'] });
+  planCode: z.string().regex(/^PLN_[A-Za-z0-9]+$/, 'must be a Paystack plan code').optional(),
+  tier:     z.enum(['premium', 'pro']).optional(),
+}).refine((body) => body.planCode || body.tier, { message: 'planCode or tier is required', path: ['planCode'] });
+
+const confirmSchema = z.object({ reference: z.string().min(1).max(100).regex(/^[A-Za-z0-9._=-]+$/, 'is not a payment reference') });
 
 /**
  * GET /api/subscriptions/prices — plans that can be bought right now.
@@ -30,14 +32,18 @@ router.get('/me', requireAuth, async (req: AuthRequest, res) => {
   res.json(sub);
 });
 
-/** POST /api/subscriptions/checkout */
+/** POST /api/subscriptions/checkout → { url, reference } */
 router.post('/checkout', requireAuth, validateBody(checkoutSchema), async (req: AuthRequest, res) => {
-  const { priceId, tier } = req.body;
-  const session = await subscriptionsService.createCheckoutSession(req.user!.sub, { priceId, tier });
-  res.json(session);
+  const { planCode, tier } = req.body;
+  res.json(await subscriptionsService.createCheckoutSession(req.user!.sub, { planCode, tier }));
 });
 
-/** POST /api/subscriptions/portal — Stripe billing portal (change plan, card, cancel) */
+/** POST /api/subscriptions/confirm → { status: paid|pending|failed, tier } */
+router.post('/confirm', requireAuth, validateBody(confirmSchema), async (req: AuthRequest, res) => {
+  res.json(await subscriptionsService.confirmForUser(req.user!.sub, req.body.reference));
+});
+
+/** POST /api/subscriptions/portal → { url }: Paystack page to update the card or cancel */
 router.post('/portal', requireAuth, async (req: AuthRequest, res) => {
   const session = await subscriptionsService.createPortalSession(req.user!.sub);
   res.json(session);
@@ -69,11 +75,11 @@ router.post('/credo/webhook', async (req: Request, res) => {
   res.json(await credoService.handleWebhook(req.get('x-credo-signature') ?? req.get('credo-signature'), req.body));
 });
 
-/** POST /api/subscriptions/webhook  (called by Stripe — raw body) */
+/** POST /api/subscriptions/webhook  (called by Paystack; raw body) */
 router.post('/webhook', async (req: Request, res) => {
-  const sig = req.headers['stripe-signature'] as string;
+  const sig = req.get('x-paystack-signature');
   if (!sig) {
-    res.status(400).json({ error: 'Missing Stripe signature', code: 'MISSING_SIGNATURE' });
+    res.status(400).json({ error: 'Missing Paystack signature', code: 'MISSING_SIGNATURE' });
     return;
   }
   const result = await subscriptionsService.handleWebhook(req.body as Buffer, sig);

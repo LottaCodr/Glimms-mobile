@@ -2,7 +2,7 @@ import { buildPlans, formatInterval, formatPrice } from "@/lib/subscription/plan
 import type { PlanPrice } from "@/types/api";
 
 const premium: PlanPrice = {
-    tier: "premium", priceId: "price_1", name: "Glimms Premium", description: null,
+    tier: "premium", planCode: "PLN_1", name: "Glimms Premium", description: null,
     currency: "usd", unitAmount: 999, interval: "month", intervalCount: 1, trialDays: null,
 };
 

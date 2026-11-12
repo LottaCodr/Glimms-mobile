@@ -12,7 +12,7 @@ const openBrowser = WebBrowser.openBrowserAsync as jest.Mock;
 
 describe("prices", () => {
     it("returns the plans the server sells", async () => {
-        const prices = [{ tier: "premium", priceId: "price_1", unitAmount: 999, currency: "usd" }];
+        const prices = [{ tier: "premium", planCode: "PLN_1", unitAmount: 250000, currency: "ngn" }];
         api.get.mockResolvedValue({ data: { prices } });
 
         await expect(subscriptionService.prices()).resolves.toEqual(prices);
@@ -26,65 +26,81 @@ describe("prices", () => {
 });
 
 describe("openCheckout", () => {
-    it("asks the server for a session by tier and opens Stripe Checkout", async () => {
-        api.post.mockResolvedValue({ data: { id: "cs_1", url: "https://checkout.stripe.com/c/pay/cs_1" } });
+    const openAuthSession = WebBrowser.openAuthSessionAsync as jest.Mock;
+    beforeEach(() => openAuthSession.mockClear());
 
-        await subscriptionService.openCheckout("pro");
+    it("asks the server for a checkout by tier and opens Paystack in a session that returns to the app", async () => {
+        api.post.mockResolvedValue({ data: { reference: "glm_1", url: "https://checkout.paystack.com/abc123" } });
+        openAuthSession.mockResolvedValue({ type: "success", url: "glimms://billing/return?status=paid" });
+
+        const { reference, result } = await subscriptionService.openCheckout("pro");
 
         expect(api.post).toHaveBeenCalledWith("/api/subscriptions/checkout", { tier: "pro" });
-        expect(openBrowser).toHaveBeenCalledWith("https://checkout.stripe.com/c/pay/cs_1");
+        expect(openAuthSession).toHaveBeenCalledWith("https://checkout.paystack.com/abc123", "glimms://billing/return");
+        expect(reference).toBe("glm_1");
+        expect(result.type).toBe("success");
     });
 
     it.each([
         "https://evil.example/checkout",
-        "https://checkout.stripe.com.evil.example/pay",
-        "http://checkout.stripe.com/c/pay/cs_1",
+        "https://checkout.paystack.com.evil.example/pay",
+        "https://checkout.paystack.com@evil.example/pay",
+        "https://evilpaystack.com/abc",
+        "http://checkout.paystack.com/abc123",
+        "javascript:alert(1)",
         undefined,
     ])("refuses to open %s", async (url) => {
-        api.post.mockResolvedValue({ data: { id: "cs_1", url } });
+        api.post.mockResolvedValue({ data: { reference: "glm_1", url } });
 
         await expect(subscriptionService.openCheckout("premium")).rejects.toMatchObject({ code: "UNTRUSTED_REDIRECT" });
-        expect(openBrowser).not.toHaveBeenCalled();
+        expect(openAuthSession).not.toHaveBeenCalled();
+    });
+});
+
+describe("confirm / waitForPayment", () => {
+    it("asks the server what Paystack says about the payment", async () => {
+        api.post.mockResolvedValueOnce({ data: { status: "paid", tier: "pro" } });
+        await expect(subscriptionService.confirm("glm_1")).resolves.toBe("paid");
+        expect(api.post).toHaveBeenCalledWith("/api/subscriptions/confirm", { reference: "glm_1" });
+    });
+
+    it("polls until the payment is settled", async () => {
+        api.post.mockReset();
+        api.post
+            .mockResolvedValueOnce({ data: { status: "pending" } })
+            .mockResolvedValueOnce({ data: { status: "pending" } })
+            .mockResolvedValueOnce({ data: { status: "failed" } });
+
+        await expect(subscriptionService.waitForPayment("glm_1", { intervalMs: 0 })).resolves.toBe("failed");
+        expect(api.post).toHaveBeenCalledTimes(3);
+    });
+
+    it("gives up after the allowed attempts and reports it as pending", async () => {
+        api.post.mockReset();
+        api.post.mockResolvedValue({ data: { status: "pending" } });
+
+        await expect(subscriptionService.waitForPayment("glm_1", { attempts: 2, intervalMs: 0 })).resolves.toBe("pending");
+        expect(api.post).toHaveBeenCalledTimes(3); // first look + 2 retries
     });
 });
 
 describe("openBillingPortal", () => {
-    it("opens the Stripe billing portal", async () => {
-        api.post.mockResolvedValue({ data: { url: "https://billing.stripe.com/p/session/1" } });
+    beforeEach(() => openBrowser.mockClear());
+
+    it("opens Paystack's manage-subscription page", async () => {
+        const url = "https://paystack.com/manage/subscriptions/SUB_1?subscription_token=t";
+        api.post.mockResolvedValue({ data: { url } });
 
         await subscriptionService.openBillingPortal();
 
         expect(api.post).toHaveBeenCalledWith("/api/subscriptions/portal");
-        expect(openBrowser).toHaveBeenCalledWith("https://billing.stripe.com/p/session/1");
+        expect(openBrowser).toHaveBeenCalledWith(url);
     });
 
-    it("refuses a portal link on another host", async () => {
-        api.post.mockResolvedValue({ data: { url: "https://checkout.stripe.com/c/pay/cs_1" } });
+    it("refuses a link on another host", async () => {
+        api.post.mockResolvedValue({ data: { url: "https://paystack.com.evil.example/manage" } });
         await expect(subscriptionService.openBillingPortal()).rejects.toMatchObject({ code: "UNTRUSTED_REDIRECT" });
         expect(openBrowser).not.toHaveBeenCalled();
-    });
-});
-
-describe("waitUntilActive", () => {
-    it("polls until the webhook has activated the subscription", async () => {
-        api.get
-            .mockResolvedValueOnce({ data: { status: "inactive" } })
-            .mockResolvedValueOnce({ data: { status: "inactive" } })
-            .mockResolvedValueOnce({ data: { status: "active" } });
-
-        const sub = await subscriptionService.waitUntilActive({ attempts: 5, intervalMs: 0 });
-
-        expect(sub.status).toBe("active");
-        expect(api.get).toHaveBeenCalledTimes(3);
-    });
-
-    it("gives up after the allowed attempts and reports the last status", async () => {
-        api.get.mockResolvedValue({ data: { status: "inactive" } });
-
-        const sub = await subscriptionService.waitUntilActive({ attempts: 2, intervalMs: 0 });
-
-        expect(sub.status).toBe("inactive");
-        expect(api.get).toHaveBeenCalledTimes(3); // first look + 2 retries
     });
 });
 

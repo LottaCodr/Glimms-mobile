@@ -2,7 +2,7 @@
  * Account deletion.
  *
  * Order matters:
- *  1. Stop billing. If Stripe cannot be reached the deletion is refused, so a
+ *  1. Stop billing. If Paystack cannot be reached the deletion is refused, so a
  *     user is never left paying for an account that no longer exists.
  *  2. Delete the user row. Foreign keys cascade to every table that holds
  *     their data, and the same transaction records an "erasure" still owed.
@@ -15,8 +15,8 @@ import { logger } from '../lib/logger';
 import { NotFoundError, ServiceUnavailableError } from '../middleware/errorHandler.middleware';
 
 export interface AccountDeletionDeps {
-  /** Deletes the Stripe customer, which cancels every subscription at once. Null when Stripe is not configured. */
-  deleteStripeCustomer: ((customerId: string) => Promise<void>) | null;
+  /** Stops the user's Paystack subscription from renewing. Null when Paystack is not configured. */
+  cancelSubscription:   ((userId: string) => Promise<void>) | null;
   deleteStoragePrefix:  (prefix: string) => Promise<number>;
   deleteVectors:        (userId: string) => Promise<void>;
 }
@@ -45,25 +45,20 @@ export function createAccountService(deps: AccountDeletionDeps) {
       if (!user) throw new NotFoundError('User');
 
       const subscription = await subscriptionsRepository.findByUserId(userId);
-      if (subscription?.stripeCustomerId) {
-        const hasLiveSubscription = !!subscription.stripeSubscriptionId
-          && (subscription.status === 'active' || subscription.status === 'past_due');
-        if (!deps.deleteStripeCustomer) {
-          if (hasLiveSubscription) {
-            throw new ServiceUnavailableError(
-              'Your subscription could not be cancelled right now, so the account was not deleted. Please try again.',
-              'BILLING_UNAVAILABLE',
-            );
-          }
-        } else {
+      if (subscription?.provider === 'paystack') {
+        const live = subscription.status === 'active' || subscription.status === 'past_due';
+        const refused = () => new ServiceUnavailableError(
+          'Your subscription could not be cancelled right now, so the account was not deleted. Please try again.',
+          'BILLING_UNAVAILABLE',
+        );
+        if (!deps.cancelSubscription) {
+          if (live && !subscription.cancelAtPeriodEnd) throw refused();
+        } else if (live || subscription.paystackSubscriptionCode) {
           try {
-            await deps.deleteStripeCustomer(subscription.stripeCustomerId);
+            await deps.cancelSubscription(userId);
           } catch (err: any) {
-            logger.error({ userId, err: err?.message }, 'Could not delete Stripe customer — account deletion refused');
-            throw new ServiceUnavailableError(
-              'Your subscription could not be cancelled right now, so the account was not deleted. Please try again.',
-              'BILLING_UNAVAILABLE',
-            );
+            logger.error({ userId, err: err?.message }, 'Could not cancel the Paystack subscription: account deletion refused');
+            throw refused();
           }
         }
       }

@@ -1,8 +1,8 @@
 /**
  * Subscription hook — guide §12/§16.8.
  * Plans are priced by the API (GET /subscriptions/prices). Checkout opens in an
- * in-app browser; the Stripe webhook then flips the subscription active and we
- * poll for it. Subscribers manage billing in the Stripe portal.
+ * in-app browser; afterwards the API checks the payment with Paystack. Card
+ * subscribers manage billing on Paystack's subscription page.
  */
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -52,10 +52,12 @@ export const useSubscription = () => {
     };
 
     /**
-     * Starts Stripe Checkout for a plan. Returns:
-     * - "active"   → webhook already processed; UI can close the paywall
-     * - "pending"  → user may still be mid-checkout; keep waiting
-     * - "cancelled"→ user dismissed the browser without paying
+     * Starts Paystack checkout for a plan. The API checks the payment with
+     * Paystack; the browser's word is never taken for it. Returns:
+     * - "active"   → paid; UI can close the paywall
+     * - "pending"  → Paystack has not confirmed yet
+     * - "cancelled"→ user closed the browser without paying
+     * - "failed"   → the payment was declined
      */
     const subscribe = async (planId: string): Promise<SubscribeResult> => {
         const plan = plans.find((p) => p.id === planId);
@@ -66,20 +68,20 @@ export const useSubscription = () => {
         setLoading(true);
         setError(null);
         try {
-            const result = await subscriptionService.openCheckout(plan.id);
-            // The sheet closing without a redirect means the user bailed.
-            if (result.type === "cancel" || result.type === "dismiss") {
-                // Could still have completed → check before calling it cancelled.
-                const sub = await subscriptionService.me();
-                if (sub.status !== "active") return "cancelled";
-            }
+            const { reference, result } = await subscriptionService.openCheckout(plan.id);
+            const closedByUser = result.type === "cancel" || result.type === "dismiss";
+            // A closed browser may still be a finished payment, so always ask;
+            // just don't wait long if they bailed.
+            const status = closedByUser
+                ? await subscriptionService.confirm(reference)
+                : await subscriptionService.waitForPayment(reference);
 
-            const sub = await subscriptionService.waitUntilActive();
-            if (sub.status === "active") {
+            if (status === "paid") {
                 await refreshBilling();
                 return "active";
             }
-            return "pending";
+            if (status === "failed") return "failed";
+            return closedByUser ? "cancelled" : "pending";
         } catch (e: any) {
             setError(e?.message ?? "Checkout failed — please try again.");
             return "idle";
@@ -118,7 +120,7 @@ export const useSubscription = () => {
         }
     };
 
-    /** Opens the Stripe billing portal, then picks up whatever changed there. Resolves false on failure. */
+    /** Opens Paystack's subscription page, then picks up whatever changed there. Resolves false on failure. */
     const manageBilling = async (): Promise<boolean> => {
         setLoading(true);
         setError(null);

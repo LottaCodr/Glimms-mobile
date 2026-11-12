@@ -131,7 +131,7 @@ export function createCredoService(http: CredoHttp, settings: CredoSettings) {
       await subscriptionsRepository.updateByUserId(payment.userId, {
         provider:             'credo',
         status:               'active',
-        stripeSubscriptionId: null,
+        paystackSubscriptionCode: null,
         currentPeriodEnd:     new Date(from + payment.periodDays * 86_400_000),
         cancelAtPeriodEnd:    true, // a pass never renews by itself
       }, tx);
@@ -186,7 +186,7 @@ export function createCredoService(http: CredoHttp, settings: CredoSettings) {
       if (!user) throw new NotFoundError('User');
 
       const current = await subscriptionsRepository.findByUserId(userId);
-      if (current?.provider !== 'credo' && current?.stripeSubscriptionId
+      if (current?.provider === 'paystack'
         && (current.status === 'active' || current.status === 'past_due')) {
         // Otherwise the card subscription would keep billing alongside the pass.
         throw new ConflictError('You already have a subscription. Manage it from billing settings.');
@@ -282,7 +282,7 @@ export function createCredoService(http: CredoHttp, settings: CredoSettings) {
     /** Puts users whose pass has ended back on the free tier. */
     async expirePasses(): Promise<number> {
       return getDb().transaction(async (tx) => {
-        const userIds = await subscriptionsRepository.expireCredoPasses(tx);
+        const userIds = await subscriptionsRepository.expireEndedPlans(tx);
         for (const userId of userIds) await usersRepository.update(userId, { tier: 'free' }, tx);
         return userIds.length;
       });

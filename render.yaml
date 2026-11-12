@@ -164,13 +164,11 @@ services:
         sync: false
       - key: APPLE_CLIENT_IDS
         sync: false
-      - key: STRIPE_SECRET_KEY
+      - key: PAYSTACK_SECRET_KEY     # sk_live_… (also signs the webhook)
         sync: false
-      - key: STRIPE_WEBHOOK_SECRET
+      - key: PAYSTACK_PREMIUM_PLAN_CODE   # PLN_…
         sync: false
-      - key: STRIPE_PREMIUM_PRICE_ID
-        sync: false
-      - key: STRIPE_PRO_PRICE_ID
+      - key: PAYSTACK_PRO_PLAN_CODE       # PLN_…
         sync: false
       - key: CREDO_PUBLIC_KEY
         sync: false

@@ -34,24 +34,29 @@ const PLAN_COPY: Record<Tier, { name: string; features: string[]; isPopular?: bo
     },
 };
 
-/** Currencies Stripe charges in whole units (no cents). */
+/** Currencies charged in whole units (no cents). */
 const ZERO_DECIMAL = new Set([
     "bif", "clp", "djf", "gnf", "jpy", "kmf", "krw", "mga", "pyg", "rwf", "ugx", "vnd", "vuv", "xaf", "xof", "xpf",
 ]);
 
-/** Formats a Stripe amount (minor units) for display: (999, "usd") → "$9.99". */
+/** Formats an amount (minor units) for display: (999, "usd") → "$9.99". */
 export function formatPrice(unitAmount: number, currency: string): string {
     const code = currency.toUpperCase();
     const zeroDecimal = ZERO_DECIMAL.has(currency.toLowerCase());
     const amount = zeroDecimal ? unitAmount : unitAmount / 100;
     const wholeNumber = Number.isInteger(amount);
+    const digits = { minimumFractionDigits: wholeNumber ? 0 : 2, maximumFractionDigits: zeroDecimal ? 0 : 2 };
+    // "narrowSymbol" gives ₦2,500 rather than NGN 2,500, but older JS engines
+    // reject it, so fall back to the default symbol before giving up on Intl.
+    for (const currencyDisplay of ["narrowSymbol", "symbol"] as const) {
+        try {
+            return new Intl.NumberFormat("en-US", { style: "currency", currency: code, currencyDisplay, ...digits }).format(amount);
+        } catch {
+            // try the next form
+        }
+    }
     try {
-        return new Intl.NumberFormat("en-US", {
-            style: "currency",
-            currency: code,
-            minimumFractionDigits: wholeNumber ? 0 : 2,
-            maximumFractionDigits: zeroDecimal ? 0 : 2,
-        }).format(amount);
+        return `${code} ${amount.toLocaleString("en-US", digits)}`;
     } catch {
         // Unknown currency code or no Intl support on the device.
         return `${code} ${wholeNumber ? amount : amount.toFixed(2)}`;

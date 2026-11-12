@@ -14,7 +14,7 @@
 | Cache / Queue | Redis 7 + BullMQ |
 | Real-time | Socket.IO |
 | Storage | AWS S3 |
-| Payments | Stripe |
+| Payments | Paystack (card subscriptions), Credo (naira passes) |
 | Push notifications | Expo push service (relays to APNs / FCM) |
 | Naira payments | Credo by eTranzact (hosted checkout, 30-day passes) |
 | Email | SendGrid |
@@ -187,10 +187,11 @@ No Docker on your machine? Get Postgres and Redis some other way before running 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/api/subscriptions/me` | ✅ | Current subscription |
-| GET | `/api/subscriptions/prices` | — | Plans for sale (from Stripe, cached) |
-| POST | `/api/subscriptions/checkout` | ✅ | Create Stripe checkout for a plan |
-| POST | `/api/subscriptions/portal` | ✅ | Stripe billing portal (manage / cancel) |
-| POST | `/api/subscriptions/webhook` | Stripe | Stripe webhook |
+| GET | `/api/subscriptions/prices` | — | Plans for sale (from Paystack, cached) |
+| POST | `/api/subscriptions/checkout` | ✅ | Start Paystack checkout for a plan |
+| POST | `/api/subscriptions/confirm` | ✅ | Ask Paystack whether a checkout was paid |
+| POST | `/api/subscriptions/portal` | ✅ | Paystack subscription page (update card / cancel) |
+| POST | `/api/subscriptions/webhook` | Paystack | Paystack webhook |
 | POST | `/api/notifications/device-token` | ✅ | Register push token |
 | POST | `/api/analytics/track` | Optional | Track event |
 
@@ -374,7 +375,7 @@ Defined in `supabase/migrations/`. All primary keys are `uuid`; every table has
 | `users` | `email` unique + lowercase, `tier` check |
 | `refresh_tokens` | `token_hash` unique, index on `expires_at` (swept hourly) |
 | `user_preferences` | one row per user |
-| `subscriptions` | one row per user, index on `stripe_customer_id` |
+| `subscriptions` | one row per user, indexes on `paystack_customer_code` and `paystack_subscription_code` |
 | `catalog_items` | `(user_id, vertical)`, active items per user, GIN on `tags` |
 | `design_jobs` | `(user_id, status)`, `(user_id, created_at)` |
 | `design_sessions` | `(user_id, created_at)`, `(user_id, status)`; `steps` / `result` are `jsonb` |

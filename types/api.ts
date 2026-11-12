@@ -293,15 +293,17 @@ export type Subscription = {
     userId: string;
     status: SubStatus;
     tier?: Tier;
-    /** Who bills it: a Stripe subscription renews; a Credo pass ends on `currentPeriodEnd`. */
-    provider?: "stripe" | "credo" | null;
-    stripeCustomerId: string | null;
-    stripeSubscriptionId: string | null;
+    /** Who bills it: a Paystack subscription renews; a Credo pass ends on `currentPeriodEnd`. */
+    provider?: "paystack" | "credo" | null;
+    paystackCustomerCode: string | null;
+    paystackSubscriptionCode: string | null;
     currentPeriodEnd: string | null;
     cancelAtPeriodEnd: boolean;
 };
 
-export type CheckoutResponse = { url: string; id: string };
+export type CheckoutResponse = { url: string; reference: string };
+/** What the payment provider says about a checkout, as reported by the API. */
+export type PaymentStatus = "paid" | "pending" | "failed";
 
 /** A naira pass sold through Credo. `amount` is in kobo; it does not renew. */
 export type CredoPlan = {
@@ -312,14 +314,15 @@ export type CredoPlan = {
     feeOnTop: boolean;
 };
 export type CredoCheckoutResponse = { url: string; reference: string };
-export type CredoPaymentStatus = "paid" | "pending" | "failed";
+export type CredoPaymentStatus = PaymentStatus;
 
 export type PaidTier = Exclude<Tier, "free">;
 
 /** A plan the server sells. `unitAmount` is in the currency's minor unit (cents). */
 export type PlanPrice = {
     tier: PaidTier;
-    priceId: string;
+    /** Paystack plan code (PLN_…). */
+    planCode: string;
     name: string;
     description: string | null;
     currency: string;

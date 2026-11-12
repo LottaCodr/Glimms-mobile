@@ -113,8 +113,8 @@ describe('createCheckout', () => {
     await expect(createCredoService(credo.http, { ...SETTINGS, amounts: {} }).createCheckout(user.id, 'pro'))
       .rejects.toMatchObject({ statusCode: 400, code: 'INVALID_PRICE' });
 
-    await subscriptionsRepository.upsertStripeCustomer(user.id, 'cus_1');
-    await subscriptionsRepository.updateByStripeCustomerId('cus_1', { status: 'active', stripeSubscriptionId: 'sub_1', provider: 'stripe' });
+    await subscriptionsRepository.lockForUser(user.id, database.db);
+    await subscriptionsRepository.updateByUserId(user.id, { status: 'active', paystackSubscriptionCode: 'SUB_1', provider: 'paystack' });
     await expect(createCredoService(credo.http, SETTINGS).createCheckout(user.id, 'pro'))
       .rejects.toMatchObject({ statusCode: 409 });
   });
@@ -311,7 +311,7 @@ describe('sweeps', () => {
     expect(await usersRepository.findById(user.id)).toMatchObject({ tier: 'premium' });
   });
 
-  it('returns a user to the free tier when the pass ends, and leaves Stripe subscribers alone', async () => {
+  it('returns a user to the free tier when the pass ends, and leaves renewing Paystack subscribers alone', async () => {
     const credo = fakeCredo();
     const service = createCredoService(credo.http, SETTINGS);
     const user = await createUser();
@@ -319,10 +319,10 @@ describe('sweeps', () => {
     credo.report({ status: 0 });
     await service.confirmForUser(user.id, reference);
 
-    const stripeUser = await createUser({ tier: 'pro' });
-    await subscriptionsRepository.upsertStripeCustomer(stripeUser.id, 'cus_s');
-    await subscriptionsRepository.updateByStripeCustomerId('cus_s', {
-      status: 'active', provider: 'stripe', stripeSubscriptionId: 'sub_s', currentPeriodEnd: new Date(Date.now() - DAY),
+    const cardUser = await createUser({ tier: 'pro' });
+    await subscriptionsRepository.lockForUser(cardUser.id, database.db);
+    await subscriptionsRepository.updateByUserId(cardUser.id, {
+      status: 'active', provider: 'paystack', paystackSubscriptionCode: 'SUB_S', currentPeriodEnd: new Date(Date.now() - DAY),
     });
 
     expect(await service.expirePasses()).toBe(0);
@@ -331,6 +331,6 @@ describe('sweeps', () => {
 
     expect(await usersRepository.findById(user.id)).toMatchObject({ tier: 'free' });
     expect(await subscriptionsRepository.findByUserId(user.id)).toMatchObject({ status: 'inactive' });
-    expect(await usersRepository.findById(stripeUser.id)).toMatchObject({ tier: 'pro' });
+    expect(await usersRepository.findById(cardUser.id)).toMatchObject({ tier: 'pro' });
   });
 });

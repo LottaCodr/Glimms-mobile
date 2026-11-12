@@ -10,7 +10,7 @@ beforeEach(async () => { await database.reset(); });
 
 function deps() {
   return {
-    deleteStripeCustomer: jest.fn(async (_customerId: string) => undefined),
+    cancelSubscription: jest.fn(async (_userId: string) => undefined),
     deleteStoragePrefix: jest.fn(async (_prefix: string) => 3),
     deleteVectors: jest.fn(async (_userId: string) => undefined),
   };
@@ -19,9 +19,10 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 
 async function subscriber(status: 'active' | 'inactive' = 'active') {
   const user = await createUser({ tier: 'premium' });
-  await subscriptionsRepository.upsertStripeCustomer(user.id, 'cus_1');
-  await subscriptionsRepository.updateByStripeCustomerId('cus_1', {
-    status, stripeSubscriptionId: status === 'active' ? 'sub_1' : null,
+  await subscriptionsRepository.lockForUser(user.id, database.db);
+  await subscriptionsRepository.updateByUserId(user.id, {
+    provider: 'paystack', paystackCustomerCode: 'CUS_1', status,
+    paystackSubscriptionCode: status === 'active' ? 'SUB_1' : null,
   });
   return user;
 }
@@ -34,7 +35,7 @@ describe('deleteAccount', () => {
     await createAccountService(d).deleteAccount(user.id);
     await settle();
 
-    expect(d.deleteStripeCustomer).toHaveBeenCalledWith('cus_1');
+    expect(d.cancelSubscription).toHaveBeenCalledWith(user.id);
     expect(await usersRepository.findById(user.id)).toBeNull();
     expect(await subscriptionsRepository.findByUserId(user.id)).toBeNull();
     expect(d.deleteStoragePrefix.mock.calls.map(([prefix]) => prefix)).toEqual([`users/${user.id}/`, `uploads/${user.id}/`]);
@@ -44,7 +45,7 @@ describe('deleteAccount', () => {
 
   it('keeps the account when billing cannot be cancelled', async () => {
     const d = deps();
-    d.deleteStripeCustomer.mockRejectedValue(new Error('stripe is down'));
+    d.cancelSubscription.mockRejectedValue(new Error('paystack is down'));
     const user = await subscriber();
 
     await expect(createAccountService(d).deleteAccount(user.id))
@@ -54,25 +55,25 @@ describe('deleteAccount', () => {
     expect(d.deleteStoragePrefix).not.toHaveBeenCalled();
   });
 
-  it('refuses to delete a paying subscriber when Stripe is not configured', async () => {
+  it('refuses to delete a paying subscriber when Paystack is not configured', async () => {
     const user = await subscriber();
-    const service = createAccountService({ ...deps(), deleteStripeCustomer: null });
+    const service = createAccountService({ ...deps(), cancelSubscription: null });
 
     await expect(service.deleteAccount(user.id)).rejects.toMatchObject({ statusCode: 503 });
     expect(await usersRepository.findById(user.id)).not.toBeNull();
   });
 
-  it('deletes a user who only ever started a checkout, even without Stripe', async () => {
+  it('deletes a user who only ever started a checkout, even without Paystack', async () => {
     const user = await subscriber('inactive');
-    await createAccountService({ ...deps(), deleteStripeCustomer: null }).deleteAccount(user.id);
+    await createAccountService({ ...deps(), cancelSubscription: null }).deleteAccount(user.id);
     expect(await usersRepository.findById(user.id)).toBeNull();
   });
 
-  it('does not contact Stripe for a user who never had a customer', async () => {
+  it('does not contact Paystack for a user who never subscribed', async () => {
     const d = deps();
     const user = await createUser();
     await createAccountService(d).deleteAccount(user.id);
-    expect(d.deleteStripeCustomer).not.toHaveBeenCalled();
+    expect(d.cancelSubscription).not.toHaveBeenCalled();
     expect(await usersRepository.findById(user.id)).toBeNull();
   });
 

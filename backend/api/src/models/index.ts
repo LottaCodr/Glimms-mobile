@@ -69,11 +69,13 @@ export type SubStatus = 'active' | 'inactive' | 'past_due' | 'cancelled';
 export interface Subscription {
   id:                   string;
   userId:               string;
-  stripeCustomerId:     string | null;
-  stripeSubscriptionId: string | null;
+  /** Paystack customer code (CUS_…). */
+  paystackCustomerCode:     string | null;
+  /** Paystack subscription code (SUB_…) of the subscription on record. */
+  paystackSubscriptionCode: string | null;
   status:               SubStatus;
   /** Who bills this subscription. Null until something has been bought. */
-  provider:             'stripe' | 'credo' | null;
+  provider:             'paystack' | 'credo' | null;
   currentPeriodEnd:     Date | null;
   cancelAtPeriodEnd:    boolean;
   createdAt:            Date;

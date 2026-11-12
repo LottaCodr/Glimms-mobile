@@ -2,7 +2,7 @@
 
 Credo is eTranzact's payment gateway (docs: https://docs.credocentral.com). It lets
 Nigerian customers pay in naira by card or bank transfer. Glimms offers it
-alongside Stripe.
+alongside Paystack (see `PAYSTACK.md`).
 
 ## What Credo can and cannot do
 
@@ -42,7 +42,7 @@ what was stored, and only once per payment. Credo's webhook signature is
 `SHA512(secretKey + businessCode)`: it is the same for every call and does not
 cover the body, so the webhook is treated as a hint to verify, never as proof.
 
-Stripe and Credo are mutually exclusive: a user with an active Stripe
+Paystack and Credo are mutually exclusive: a user with an active Paystack
 subscription cannot buy a pass, and the reverse (both answer 409).
 
 ## Setup
@@ -76,5 +76,5 @@ response shapes. The docs name the webhook signature header two ways
 ## Store policy
 
 Apple and Google generally require in-app purchase for digital subscriptions
-bought inside the app. Selling Premium/Pro through Stripe or Credo may be
+bought inside the app. Selling Premium/Pro through Paystack or Credo may be
 rejected at review, depending on the storefront. Decide this before submitting.

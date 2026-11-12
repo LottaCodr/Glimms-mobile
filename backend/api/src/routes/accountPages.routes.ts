@@ -10,6 +10,7 @@ import { authLimiter } from '../middleware/rateLimiter.middleware';
 import { AppError } from '../middleware/errorHandler.middleware';
 import { escapeHtml } from '../lib/mailer';
 import { credoService } from '../services/credo.service';
+import { subscriptionsService } from '../services/subscriptions.service';
 import { config } from '../config';
 
 /** URL scheme of the mobile app, e.g. `glimms`. */
@@ -116,6 +117,26 @@ router.post('/verify-email', authLimiter, async (req, res) => {
   page(res, 200, 'Email confirmed', '<p>Thanks. Your email address is confirmed. You can return to the Glimms app.</p>');
 });
 
+/** A page that reports a payment's outcome and hands control back to the app. */
+function paymentReturnPage(res: Response, outcome: string, appReturnUrl: string): void {
+  const copy: Record<string, [string, string]> = {
+    paid:    ['Payment received', 'Thank you. Your plan is now active.'],
+    pending: ['Payment processing', 'We have not received confirmation yet. Your plan activates as soon as the payment clears.'],
+    failed:  ['Payment not completed', 'No plan was activated. You can try again from the app.'],
+    unknown: ['Payment not found', 'We could not match this payment. If you were charged, contact support.'],
+  };
+  const [title, message] = copy[outcome] ?? copy.unknown;
+  const appUrl = `${appReturnUrl}?status=${encodeURIComponent(outcome)}`;
+
+  // Navigating to the app's own URL scheme hands control back to the app.
+  res.set('Refresh', `0; url=${appUrl}`);
+  page(res, 200, title, `<p>${escapeHtml(message)}</p>
+<form method="get" action="${escapeHtml(appReturnUrl)}">
+<input type="hidden" name="status" value="${escapeHtml(outcome)}">
+<button type="submit">Return to Glimms</button>
+</form>`);
+}
+
 // Where Credo sends the browser after checkout. The payment is re-checked with
 // Credo here; the query string itself proves nothing.
 router.get('/credo/return', authLimiter, async (req, res) => {
@@ -128,23 +149,22 @@ router.get('/credo/return', authLimiter, async (req, res) => {
   } catch {
     outcome = 'pending'; // Credo unreachable: the webhook or the sweep will finish it
   }
+  paymentReturnPage(res, outcome, config.credo.appReturnUrl);
+});
 
-  const copy: Record<string, [string, string]> = {
-    paid:    ['Payment received', 'Thank you. Your plan is now active.'],
-    pending: ['Payment processing', 'We have not received confirmation yet. Your plan activates as soon as the payment clears.'],
-    failed:  ['Payment not completed', 'No plan was activated. You can try again from the app.'],
-    unknown: ['Payment not found', 'We could not match this payment. If you were charged, contact support.'],
-  };
-  const [title, message] = copy[outcome] ?? copy.unknown;
-  const appUrl = `${config.credo.appReturnUrl}?status=${encodeURIComponent(outcome)}`;
+// Where Paystack sends the browser after checkout (`?reference=…&trxref=…`).
+// The payment is re-checked with Paystack; the query string proves nothing.
+router.get('/paystack/return', authLimiter, async (req, res) => {
+  const reference = [req.query.reference, req.query.trxref]
+    .map(asString).find((value) => value && /^[A-Za-z0-9._=-]{1,100}$/.test(value)) ?? '';
 
-  // Navigating to the app's own URL scheme hands control back to the app.
-  res.set('Refresh', `0; url=${appUrl}`);
-  page(res, 200, title, `<p>${escapeHtml(message)}</p>
-<form method="get" action="${escapeHtml(config.credo.appReturnUrl)}">
-<input type="hidden" name="status" value="${escapeHtml(outcome)}">
-<button type="submit">Return to Glimms</button>
-</form>`);
+  let outcome: string;
+  try {
+    outcome = await subscriptionsService.confirmFromRedirect(reference);
+  } catch {
+    outcome = 'pending'; // Paystack unreachable: the webhook will finish it
+  }
+  paymentReturnPage(res, outcome, config.paystack.appReturnUrl);
 });
 
 export { router as accountPagesRouter };

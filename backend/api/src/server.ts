@@ -5,9 +5,10 @@ import { config } from './config';
 import { logger } from './lib/logger';
 import { connectDb, disconnectDb, getDb } from './db';
 import { runMigrations } from './db/migrate';
-import { accountTokensRepository, refreshTokensRepository, stripeEventsRepository } from './repositories';
+import { accountTokensRepository, refreshTokensRepository, paystackEventsRepository } from './repositories';
 import { accountService } from './services/accountDeletion';
 import { credoService } from './services/credo.service';
+import { subscriptionsService } from './services/subscriptions.service';
 import { connectRedis, redis } from './lib/redis';
 import { createWebSocketServer } from './websocket';
 import { startDesignWorker, setIO } from './workers/design.worker';
@@ -20,14 +21,17 @@ const TOKEN_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
  */
 const BILLING_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
-/** Ends finished Credo passes and settles payments whose notifications were missed. */
+/** Ends plans whose paid period is over and settles payments whose notifications were missed. */
 function startBillingSweep(): NodeJS.Timeout {
   const sweep = () => {
     credoService.expirePasses()
-      .then((ended) => { if (ended > 0) logger.info({ ended }, 'Credo passes ended'); })
-      .catch((err) => logger.warn({ err }, 'Credo pass expiry failed'));
+      .then((ended) => { if (ended > 0) logger.info({ ended }, 'Ended plans closed'); })
+      .catch((err) => logger.warn({ err }, 'Plan expiry failed'));
     credoService.reconcilePending()
       .catch((err) => logger.warn({ err }, 'Credo reconcile failed'));
+    subscriptionsService.reconcileOverdue()
+      .then((checked) => { if (checked > 0) logger.info({ checked }, 'Overdue Paystack subscriptions re-checked'); })
+      .catch((err) => logger.warn({ err }, 'Paystack reconcile failed'));
   };
   sweep();
   const timer = setInterval(sweep, BILLING_SWEEP_INTERVAL_MS);
@@ -42,9 +46,9 @@ function startRefreshTokenSweep(): NodeJS.Timeout {
       .catch((err) => logger.warn({ err }, 'Refresh token sweep failed'));
     accountTokensRepository.deleteExpired()
       .catch((err) => logger.warn({ err }, 'Account token sweep failed'));
-    // Stripe retries a webhook for up to three days; keep ids well past that.
-    stripeEventsRepository.deleteOlderThan(30)
-      .catch((err) => logger.warn({ err }, 'Stripe event sweep failed'));
+    // Paystack retries a webhook for up to three days; keep records well past that.
+    paystackEventsRepository.deleteOlderThan(30)
+      .catch((err) => logger.warn({ err }, 'Paystack event sweep failed'));
     // Finish erasing the files of deleted accounts whose first attempt failed.
     accountService.sweepErasures()
       .then((done) => { if (done > 0) logger.info({ done }, 'Pending account erasures completed'); })
