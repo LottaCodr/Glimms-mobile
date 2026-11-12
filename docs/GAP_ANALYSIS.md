@@ -1,5 +1,10 @@
 # Glimms — feature audit and gap analysis
 
+> **Out of date in places.** Written before account deletion, password reset,
+> social sign-in, Expo push and Credo were added, and before billing moved
+> from Stripe to Paystack. Read "Stripe" below as history; the current billing
+> design is in `PAYSTACK.md` and `CREDO.md`.
+
 Audited 2026-11-11 against the code in this repository (mobile app at the root,
 `backend/api`, `backend/ai`). "Verified" means exercised by an automated test in
 this repo. Nothing here was run against live Stripe, Supabase, S3, Redis,

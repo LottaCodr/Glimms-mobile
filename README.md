@@ -174,8 +174,9 @@ eas submit --platform android      # Google Play (needs a service account key)
 
 Before submitting, also complete the store listing requirements (screenshots,
 privacy policy URL, content ratings). Plans and prices are served by the API
-(`GET /api/subscriptions/prices`); set `STRIPE_PREMIUM_PRICE_ID` and
-`STRIPE_PRO_PRICE_ID` on the API, not in the app.
+(`GET /api/subscriptions/prices`); set `PAYSTACK_PREMIUM_PLAN_CODE` and
+`PAYSTACK_PRO_PLAN_CODE` on the API, not in the app (see
+[`docs/PAYSTACK.md`](docs/PAYSTACK.md)).
 
 Open gaps are tracked in [`docs/GAP_ANALYSIS.md`](docs/GAP_ANALYSIS.md).
 

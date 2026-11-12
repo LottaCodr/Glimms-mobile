@@ -66,19 +66,20 @@ const schema = z.object({
   AI_BREAKER_THRESHOLD:        blankAsUndefined(z.string().default('5')),
   AI_BREAKER_RESET_MS:         blankAsUndefined(z.string().default('30000')),
 
-  STRIPE_SECRET_KEY:           z.string().optional(),
-  STRIPE_WEBHOOK_SECRET:       z.string().optional(),
-  // Stripe price ids (price_…) of the paid tiers. The server is the only
-  // source of what can be bought and which tier a price grants.
-  STRIPE_PREMIUM_PRICE_ID:     blankAsUndefined(z.string().regex(/^price_[A-Za-z0-9]+$/, 'must be a Stripe price id (price_…)').optional()),
-  STRIPE_PRO_PRICE_ID:         blankAsUndefined(z.string().regex(/^price_[A-Za-z0-9]+$/, 'must be a Stripe price id (price_…)').optional()),
-  // Where Stripe sends the user after checkout / the billing portal: https
-  // pages (universal links, or pages that redirect into the app).
-  STRIPE_CHECKOUT_SUCCESS_URL: blankAsUndefined(z.string().default('https://app.glimms.ai/dashboard?upgrade=success')),
-  STRIPE_CHECKOUT_CANCEL_URL:  blankAsUndefined(z.string().default('https://app.glimms.ai/upgrade?cancelled=true')),
-  STRIPE_PORTAL_RETURN_URL:    blankAsUndefined(z.string().default('https://app.glimms.ai/dashboard')),
-  STRIPE_FREE_SCAN_LIMIT:      z.string().default('10'),
-  STRIPE_PREMIUM_SCAN_LIMIT:   z.string().default('100'),
+  // Paystack: card subscriptions. Leave the secret key blank to switch card
+  // billing off. Plans are created in the Paystack dashboard (Payments →
+  // Plans); the server is the only source of what can be bought and which
+  // tier a plan grants. The webhook is signed with the secret key itself.
+  PAYSTACK_SECRET_KEY:         blankAsUndefined(z.string().regex(/^sk_(test|live)_[A-Za-z0-9]+$/, 'must be a Paystack secret key (sk_test_… or sk_live_…)').optional()),
+  PAYSTACK_BASE_URL:           blankAsUndefined(z.string().url().default('https://api.paystack.co')),
+  PAYSTACK_PREMIUM_PLAN_CODE:  blankAsUndefined(z.string().regex(/^PLN_[A-Za-z0-9]+$/, 'must be a Paystack plan code (PLN_…)').optional()),
+  PAYSTACK_PRO_PLAN_CODE:      blankAsUndefined(z.string().regex(/^PLN_[A-Za-z0-9]+$/, 'must be a Paystack plan code (PLN_…)').optional()),
+  // Where the browser goes after payment so the app regains focus.
+  PAYSTACK_APP_RETURN_URL:     blankAsUndefined(z.string().default('glimms://billing/return')),
+
+  // Daily scan allowance per tier (pro is unlimited).
+  FREE_SCAN_LIMIT:             blankAsUndefined(z.string().regex(/^\d+$/).default('10')),
+  PREMIUM_SCAN_LIMIT:          blankAsUndefined(z.string().regex(/^\d+$/).default('100')),
 
   // Credo (eTranzact) — naira card and bank-transfer payments. Credo has no
   // recurring billing: a payment buys CREDO_PERIOD_DAYS of a tier.
@@ -247,18 +248,19 @@ export const config = {
   /** Whether GET /health/ready passes when services run offline/fallback backends. */
   aiAllowDegraded: e.AI_ALLOW_DEGRADED === 'true',
 
-  stripe: {
-    secretKey:        e.STRIPE_SECRET_KEY,
-    webhookSecret:    e.STRIPE_WEBHOOK_SECRET,
-    prices: {
-      premium: e.STRIPE_PREMIUM_PRICE_ID,
-      pro:     e.STRIPE_PRO_PRICE_ID,
+  paystack: {
+    secretKey:    e.PAYSTACK_SECRET_KEY,
+    baseUrl:      e.PAYSTACK_BASE_URL.replace(/\/+$/, ''),
+    plans: {
+      premium: e.PAYSTACK_PREMIUM_PLAN_CODE,
+      pro:     e.PAYSTACK_PRO_PLAN_CODE,
     },
-    checkoutSuccessUrl: e.STRIPE_CHECKOUT_SUCCESS_URL,
-    checkoutCancelUrl:  e.STRIPE_CHECKOUT_CANCEL_URL,
-    portalReturnUrl:    e.STRIPE_PORTAL_RETURN_URL,
-    freeScanLimit:    parseInt(e.STRIPE_FREE_SCAN_LIMIT),
-    premiumScanLimit: parseInt(e.STRIPE_PREMIUM_SCAN_LIMIT),
+    appReturnUrl: e.PAYSTACK_APP_RETURN_URL,
+  },
+
+  scanLimits: {
+    free:    parseInt(e.FREE_SCAN_LIMIT),
+    premium: parseInt(e.PREMIUM_SCAN_LIMIT),
   },
 
   credo: {

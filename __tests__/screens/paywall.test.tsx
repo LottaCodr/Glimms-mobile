@@ -20,7 +20,9 @@ jest.mock("@/services/subscription.service", () => ({
         me: jest.fn(),
         prices: jest.fn(),
         openCheckout: jest.fn(),
-        waitUntilActive: jest.fn(),
+        confirm: jest.fn(),
+        waitForPayment: jest.fn(),
+        credoPlans: jest.fn(async () => []),
     },
 }));
 jest.mock("@/services/api.client", () => ({
@@ -35,7 +37,7 @@ jest.mock("@/services/websocket.service", () => ({ wsService: { disconnect: jest
 const service = subscriptionService as jest.Mocked<typeof subscriptionService>;
 const inactive = { status: "inactive", tier: "free" } as any;
 const price = (tier: "premium" | "pro", unitAmount: number): PlanPrice => ({
-    tier, priceId: `price_${tier}`, name: tier, description: null,
+    tier, planCode: `PLN_${tier}`, name: tier, description: null,
     currency: "usd", unitAmount, interval: "month", intervalCount: 1, trialDays: null,
 });
 
@@ -80,19 +82,19 @@ it("offers a retry when plans cannot be loaded", async () => {
 });
 
 it("opens checkout for the chosen plan", async () => {
-    service.openCheckout.mockResolvedValue({ type: "opened" } as any);
-    service.waitUntilActive.mockResolvedValue({ status: "active" } as any);
+    service.openCheckout.mockResolvedValue({ reference: "glm_1", result: { type: "success" } } as any);
+    service.waitForPayment.mockResolvedValue("paid");
     renderPaywall();
 
     fireEvent.press(await screen.findByLabelText("Choose Pro plan"));
 
     await waitFor(() => expect(service.openCheckout).toHaveBeenCalledWith("pro"));
-    await waitFor(() => expect(service.waitUntilActive).toHaveBeenCalled());
+    await waitFor(() => expect(service.waitForPayment).toHaveBeenCalledWith("glm_1"));
 });
 
 it("picks up the new tier once the subscription is active", async () => {
-    service.openCheckout.mockResolvedValue({ type: "opened" } as any);
-    service.waitUntilActive.mockResolvedValue({ status: "active" } as any);
+    service.openCheckout.mockResolvedValue({ reference: "glm_1", result: { type: "success" } } as any);
+    service.waitForPayment.mockResolvedValue("paid");
     (authApi.fetchMe as jest.Mock).mockResolvedValue({ id: "u1", tier: "pro" });
     renderPaywall();
 
@@ -103,14 +105,38 @@ it("picks up the new tier once the subscription is active", async () => {
     await waitFor(() => expect(useAuthStore.getState().user?.tier).toBe("pro"));
 });
 
-it("tells the user nothing was charged when they close checkout", async () => {
-    service.openCheckout.mockResolvedValue({ type: "cancel" } as any);
+it("tells the user nothing was charged when they close checkout unpaid", async () => {
+    service.openCheckout.mockResolvedValue({ reference: "glm_1", result: { type: "cancel" } } as any);
+    service.confirm.mockResolvedValue("pending");
     renderPaywall();
 
     fireEvent.press(await screen.findByLabelText("Choose Premium plan"));
 
     expect(await screen.findByText("Checkout closed — no charge was made.")).toBeTruthy();
-    expect(service.waitUntilActive).not.toHaveBeenCalled();
+    // One look, in case they paid and then closed the browser; no long wait.
+    expect(service.confirm).toHaveBeenCalledWith("glm_1");
+    expect(service.waitForPayment).not.toHaveBeenCalled();
+});
+
+it("upgrades a user who paid and then closed the browser themselves", async () => {
+    service.openCheckout.mockResolvedValue({ reference: "glm_1", result: { type: "dismiss" } } as any);
+    service.confirm.mockResolvedValue("paid");
+    (authApi.fetchMe as jest.Mock).mockResolvedValue({ id: "u1", tier: "premium" });
+    renderPaywall();
+
+    fireEvent.press(await screen.findByLabelText("Choose Premium plan"));
+
+    await waitFor(() => expect(useAuthStore.getState().user?.tier).toBe("premium"));
+});
+
+it("says so when the payment was declined", async () => {
+    service.openCheckout.mockResolvedValue({ reference: "glm_1", result: { type: "success" } } as any);
+    service.waitForPayment.mockResolvedValue("failed");
+    renderPaywall();
+
+    fireEvent.press(await screen.findByLabelText("Choose Premium plan"));
+
+    expect(await screen.findByText(/payment did not go through/i)).toBeTruthy();
 });
 
 it("shows the server's reason when checkout cannot start", async () => {
@@ -120,4 +146,10 @@ it("shows the server's reason when checkout cannot start", async () => {
     fireEvent.press(await screen.findByLabelText("Choose Premium plan"));
 
     expect(await screen.findByText("You already have a subscription.")).toBeTruthy();
+});
+
+it("shows naira prices with the naira sign", async () => {
+    service.prices.mockResolvedValue([{ ...price("premium", 250000), currency: "ngn" }]);
+    renderPaywall();
+    expect(await screen.findByText("₦2,500")).toBeTruthy();
 });

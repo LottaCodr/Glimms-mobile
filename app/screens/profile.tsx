@@ -165,7 +165,7 @@ export default function NewProfileScreen() {
     : null
 
   const tier = user?.tier ?? 'free'
-  /** A naira pass bought through Credo: fixed period, no renewal, no Stripe portal. */
+  /** A naira pass bought through Credo: fixed period, no renewal, no Paystack subscription page. */
   const isPass = subscription?.provider === 'credo'
   const styleChips = [...(prefsData?.styleGoals ?? []), ...(prefsData?.occasions ?? [])].slice(0, 3)
 
@@ -280,8 +280,8 @@ export default function NewProfileScreen() {
         <Touchable
           style={tier === 'free' ? styles.upgradeCard : styles.subCard}
           activeOpacity={0.85}
-          // Free users pick a plan; card subscribers manage theirs in the Stripe
-          // portal; a naira pass is extended by buying another.
+          // Free users pick a plan; card subscribers manage theirs on Paystack's
+          // subscription page; a naira pass is extended by buying another.
           onPress={() => (tier === 'free' || isPass ? router.push('/paywall' as any) : void manageBilling())}
           disabled={billingLoading}
           accessibilityRole="button"

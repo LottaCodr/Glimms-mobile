@@ -25,7 +25,7 @@ export default function TermsScreen() {
                 },
                 {
                     heading: "5. Subscriptions",
-                    body: "Paid plans are processed by Stripe. By starting a subscription you agree to Stripe's terms. Subscriptions renew until cancelled; you can manage or cancel billing at any time. Refunds are handled per applicable law.",
+                    body: "Card subscriptions are processed by Paystack and renew until cancelled; you can manage or cancel billing at any time. Naira passes paid through Credo (eTranzact) cover a fixed period and do not renew. By paying you agree to the payment provider's terms. Refunds are handled per applicable law.",
                 },
                 {
                     heading: "6. Acceptable Use",

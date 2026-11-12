@@ -17,7 +17,7 @@ afterAll(async () => { await database.close(); });
 beforeEach(async () => { await database.reset(); });
 
 const TABLES = [
-  'account_erasures', 'account_tokens', 'catalog_items', 'credo_payments', 'design_jobs', 'design_sessions', 'device_tokens', 'refresh_tokens', 'saved_designs', 'stripe_events', 'subscriptions', 'user_preferences', 'users',
+  'account_erasures', 'account_tokens', 'catalog_items', 'credo_payments', 'design_jobs', 'design_sessions', 'device_tokens', 'paystack_events', 'refresh_tokens', 'saved_designs', 'subscriptions', 'user_preferences', 'users',
 ];
 
 async function sqlState(run: Promise<unknown>): Promise<string | undefined> {
@@ -147,7 +147,7 @@ describe('referential behaviour', () => {
       id: '11111111-1111-4111-8111-111111111111', userId: user.id, vertical: 'room', correlationId: 'cor_1',
     });
     await savedDesignsRepository.create({ userId: user.id, source: { kind: 'session', id: session.id }, items: [] });
-    await subscriptionsRepository.upsertStripeCustomer(user.id, 'cus_1');
+    await subscriptionsRepository.lockForUser(user.id, database.db);
     await database.db.query(
       "insert into refresh_tokens (user_id, token_hash, expires_at) values ($1, 'h', now() + interval '1 day')", [user.id],
     );
@@ -183,29 +183,39 @@ describe('referential behaviour', () => {
   });
 });
 
-describe('stripe webhook persistence', () => {
-  it('updates a subscription by customer id and reports unknown customers', async () => {
+describe('subscription persistence', () => {
+  it('finds a subscription by its Paystack codes', async () => {
     const user = await createUser();
-    await subscriptionsRepository.upsertStripeCustomer(user.id, 'cus_42');
+    await subscriptionsRepository.lockForUser(user.id, database.db);
     const periodEnd = new Date('2031-05-01T00:00:00Z');
 
-    const updated = await subscriptionsRepository.updateByStripeCustomerId('cus_42', {
-      stripeSubscriptionId: 'sub_1', status: 'active', currentPeriodEnd: periodEnd, cancelAtPeriodEnd: true,
-    });
-
-    expect(updated).toMatchObject({
-      userId: user.id, stripeCustomerId: 'cus_42', stripeSubscriptionId: 'sub_1',
+    await subscriptionsRepository.updateByUserId(user.id, {
+      provider: 'paystack', paystackCustomerCode: 'CUS_42', paystackSubscriptionCode: 'SUB_1',
       status: 'active', currentPeriodEnd: periodEnd, cancelAtPeriodEnd: true,
     });
-    expect(await subscriptionsRepository.updateByStripeCustomerId('cus_missing', { status: 'past_due' })).toBeNull();
+
+    const expected = {
+      userId: user.id, provider: 'paystack', paystackCustomerCode: 'CUS_42', paystackSubscriptionCode: 'SUB_1',
+      status: 'active', currentPeriodEnd: periodEnd, cancelAtPeriodEnd: true,
+    };
+    expect(await subscriptionsRepository.findByPaystackSubscriptionCode('SUB_1')).toMatchObject(expected);
+    expect(await subscriptionsRepository.findByPaystackCustomerCode('CUS_42')).toMatchObject(expected);
+    expect(await subscriptionsRepository.findByPaystackSubscriptionCode('SUB_missing')).toBeNull();
+  });
+
+  it('accepts only known billing providers', async () => {
+    const user = await createUser();
+    await subscriptionsRepository.lockForUser(user.id, database.db);
+    await expect(subscriptionsRepository.updateByUserId(user.id, { provider: 'stripe' as never }))
+      .rejects.toMatchObject({ code: PgErrorCode.CheckViolation });
   });
 
   it('rolls the subscription change back when the tier change fails', async () => {
     const user = await createUser();
-    await subscriptionsRepository.upsertStripeCustomer(user.id, 'cus_7');
+    await subscriptionsRepository.lockForUser(user.id, database.db);
 
     await expect(database.db.transaction(async (tx) => {
-      await subscriptionsRepository.updateByStripeCustomerId('cus_7', { status: 'active' }, tx);
+      await subscriptionsRepository.updateByUserId(user.id, { status: 'active' }, tx);
       await usersRepository.update(user.id, { tier: 'platinum' as never }, tx); // violates users_tier_valid
     })).rejects.toMatchObject({ code: PgErrorCode.CheckViolation });
 

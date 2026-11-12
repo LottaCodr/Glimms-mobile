@@ -79,7 +79,7 @@ export function createApp(): Express {
     return generalLimiter(req, res, next);
   });
 
-  // ── Raw body for Stripe webhook — MUST come BEFORE express.json() ─────────
+  // ── Raw body for the Paystack webhook (its signature covers the exact bytes) — MUST come BEFORE express.json() ─────────
   app.use(
     '/api/subscriptions/webhook',
     express.raw({ type: 'application/json' }),

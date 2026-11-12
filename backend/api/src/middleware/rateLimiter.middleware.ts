@@ -60,8 +60,8 @@ export async function scanLimiter(
   }
 
   const maxScans = tier === 'premium'
-    ? config.stripe.premiumScanLimit
-    : config.stripe.freeScanLimit;
+    ? config.scanLimits.premium
+    : config.scanLimits.free;
 
   const today = new Date().toISOString().slice(0, 10);  // YYYY-MM-DD
   const key   = `scan_limit:${userId}:${today}`;

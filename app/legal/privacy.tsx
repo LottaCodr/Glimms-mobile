@@ -25,7 +25,7 @@ export default function PrivacyScreen() {
                 },
                 {
                     heading: "5. Third Parties",
-                    body: "Stripe processes payments (they receive only billing details). Push notifications are delivered via Firebase. Weather context comes from Open-Meteo using coordinates, not your identity.",
+                    body: "Paystack and Credo (eTranzact) process payments (they receive only billing details). Push notifications are delivered via Expo's push service. Weather context comes from Open-Meteo using coordinates, not your identity.",
                 },
                 {
                     heading: "6. Retention & Deletion",

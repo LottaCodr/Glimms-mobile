@@ -5,7 +5,7 @@ import { buildPlans } from "@/lib/subscription/plans";
 import type { PlanPrice } from "@/types/api";
 
 const premiumPrice: PlanPrice = {
-    tier: "premium", priceId: "price_1", name: "Glimms Premium", description: null,
+    tier: "premium", planCode: "PLN_1", name: "Glimms Premium", description: null,
     currency: "usd", unitAmount: 999, interval: "month", intervalCount: 1, trialDays: 7,
 };
 const plan = (id: string, prices: PlanPrice[] = [premiumPrice]) => buildPlans(prices).find((p) => p.id === id)!;

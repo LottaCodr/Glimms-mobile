@@ -1,7 +1,7 @@
 /**
  * Paywall — shown on SCAN_LIMIT_REACHED or from Settings (guide §12/§16.8).
- * Picks a plan → Stripe Checkout (in-app browser) → polls until the webhook
- * flips the subscription active.
+ * Picks a plan → Paystack checkout (in-app browser) → the API confirms the
+ * payment with Paystack.
  */
 import React, { useEffect, useState } from "react";
 import {

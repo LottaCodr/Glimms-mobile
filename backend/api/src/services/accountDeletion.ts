@@ -4,10 +4,10 @@ import { deletePrefixFromS3 } from '../lib/s3';
 import { createAccountService } from './account.service';
 import { subscriptionsService } from './subscriptions.service';
 
-/** The account service wired to the real Stripe, S3 and vector store. */
+/** The account service wired to the real Paystack, S3 and vector store. */
 export const accountService = createAccountService({
-  deleteStripeCustomer: subscriptionsService.isConfigured()
-    ? (customerId) => subscriptionsService.deleteCustomer(customerId)
+  cancelSubscription: subscriptionsService.isConfigured()
+    ? (userId) => subscriptionsService.cancelForUser(userId)
     : null,
   deleteStoragePrefix: deletePrefixFromS3,
   deleteVectors: async (userId) => {

@@ -21,13 +21,13 @@ jest.mock('./middleware/rateLimiter.middleware', () => {
   return { generalLimiter: pass, authLimiter: pass, scanLimiter: pass };
 });
 
-// Account deletion reaches Stripe, S3 and the vector store; here those are fakes.
+// Account deletion reaches Paystack, S3 and the vector store; here those are fakes.
 const erased = { prefixes: [] as string[], vectors: [] as string[] };
 jest.mock('./services/accountDeletion', () => {
   const { createAccountService } = jest.requireActual('./services/account.service');
   return {
     accountService: createAccountService({
-      deleteStripeCustomer: null,
+      cancelSubscription: null,
       deleteStoragePrefix: async (prefix: string) => { erased.prefixes.push(prefix); return 0; },
       deleteVectors: async (userId: string) => { erased.vectors.push(userId); },
     }),
@@ -276,7 +276,7 @@ describe('response contract (unchanged by the move to Postgres)', () => {
   it('returns a default subscription for a user without one', async () => {
     const token = await registerUser('sub@glimms.ai');
     const res = await request(app).get('/api/subscriptions/me').set('Authorization', `Bearer ${token}`);
-    expect(res.body).toMatchObject({ status: 'inactive', tier: 'free', stripeCustomerId: null });
+    expect(res.body).toMatchObject({ status: 'inactive', tier: 'free', paystackCustomerCode: null });
   });
 
   it('registers a device token once per device and re-points it on re-register', async () => {
@@ -492,7 +492,7 @@ describe('social sign-in (not configured)', () => {
   });
 });
 
-describe('subscription billing endpoints (Stripe not configured)', () => {
+describe('subscription billing endpoints (Paystack not configured)', () => {
   it('GET /prices is public and reports that nothing is for sale', async () => {
     const res = await request(app).get('/api/subscriptions/prices');
     expect(res.status).toBe(200);
@@ -500,8 +500,9 @@ describe('subscription billing endpoints (Stripe not configured)', () => {
     expect(res.headers['cache-control']).toContain('max-age=300');
   });
 
-  it('POST /checkout and /portal require authentication', async () => {
+  it('POST /checkout, /confirm and /portal require authentication', async () => {
     expect((await request(app).post('/api/subscriptions/checkout').send({ tier: 'premium' })).status).toBe(401);
+    expect((await request(app).post('/api/subscriptions/confirm').send({ reference: 'glm_1' })).status).toBe(401);
     expect((await request(app).post('/api/subscriptions/portal')).status).toBe(401);
   });
 
@@ -510,7 +511,7 @@ describe('subscription billing endpoints (Stripe not configured)', () => {
     const auth = { Authorization: `Bearer ${token}` };
     expect((await request(app).post('/api/subscriptions/checkout').set(auth).send({})).status).toBe(400);
     expect((await request(app).post('/api/subscriptions/checkout').set(auth).send({ tier: 'gold' })).status).toBe(400);
-    expect((await request(app).post('/api/subscriptions/checkout').set(auth).send({ priceId: 'not-a-price' })).status).toBe(400);
+    expect((await request(app).post('/api/subscriptions/checkout').set(auth).send({ planCode: 'not-a-plan' })).status).toBe(400);
   });
 
   it('POST /checkout and /portal answer 503 BILLING_NOT_CONFIGURED', async () => {
@@ -526,14 +527,28 @@ describe('subscription billing endpoints (Stripe not configured)', () => {
     expect(portal.body.code).toBe('BILLING_NOT_CONFIGURED');
   });
 
-  it('POST /webhook needs a signature, and is retried by Stripe while unconfigured', async () => {
+  it('POST /confirm validates the reference and answers 503 while unconfigured', async () => {
+    const token = await registerUser('billing-confirm@glimms.ai');
+    const auth = { Authorization: `Bearer ${token}` };
+    expect((await request(app).post('/api/subscriptions/confirm').set(auth).send({})).status).toBe(400);
+    expect((await request(app).post('/api/subscriptions/confirm').set(auth).send({ reference: '../../customer' })).status).toBe(400);
+    expect((await request(app).post('/api/subscriptions/confirm').set(auth).send({ reference: 'glm_abc' })).status).toBe(503);
+  });
+
+  it('GET /account/paystack/return sends the browser back to the app without trusting the query', async () => {
+    const res = await request(app).get('/account/paystack/return?reference=glm_abc&status=paid');
+    expect(res.status).toBe(200);
+    expect(res.headers.refresh).toBe('0; url=glimms://billing/return?status=unknown');
+  });
+
+  it('POST /webhook needs a signature, and is retried by Paystack while unconfigured', async () => {
     const unsigned = await request(app).post('/api/subscriptions/webhook')
       .set('Content-Type', 'application/json').send('{}');
     expect(unsigned.status).toBe(400);
     expect(unsigned.body.code).toBe('MISSING_SIGNATURE');
 
     const signed = await request(app).post('/api/subscriptions/webhook')
-      .set('Content-Type', 'application/json').set('Stripe-Signature', 't=1,v1=abc').send('{}');
+      .set('Content-Type', 'application/json').set('X-Paystack-Signature', 'abc').send('{}');
     expect(signed.status).toBe(503);
   });
 });

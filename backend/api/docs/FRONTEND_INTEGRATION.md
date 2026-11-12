@@ -1,7 +1,7 @@
 # Glimms Frontend Integration Guide
 > How to implement the frontend (Web + Mobile) against `glimms-api`
 
-**Backend:** `glimms-api` — Express 4 + PostgreSQL (Supabase) + Redis/BullMQ + Socket.IO + Stripe + Credo + Expo push  
+**Backend:** `glimms-api` — Express 4 + PostgreSQL (Supabase) + Redis/BullMQ + Socket.IO + Paystack + Credo + Expo push  
 **API Base URL:** `http://localhost:4000` (dev) — `https://api.glimms.ai` (prod)  
 **Last updated:** 2026-08-11 — branch `arena/019ff0c9-glimms-api`
 
@@ -20,7 +20,7 @@
 9. [Design Jobs & WebSocket Realtime](#9-design-jobs--realtime)
 10. [Saved Designs](#10-saved-designs)
 11. [Catalog](#11-catalog)
-12. [Subscriptions & Stripe](#12-subscriptions)
+12. [Subscriptions & Paystack](#12-subscriptions-paystack)
 13. [Push Notifications](#13-push-notifications)
 14. [Analytics](#14-analytics)
 15. [Types for Frontend](#15-types)
@@ -44,7 +44,7 @@
                                          ├─► S3 (images)
                                          ├─► Socket.IO (ws://)
                                          ├─► 6× Python AI services (8001-8008)
-                                         ├─► Stripe (payments)
+                                         ├─► Paystack (payments)
                                          ├─► Expo push service
                                          └─► OpenWeather + Pinecone
 ```
@@ -816,59 +816,77 @@ const { data, fetchNextPage } = useInfiniteQuery({
 
 ---
 
-## 12. Subscriptions (Stripe)
+## 12. Subscriptions (Paystack)
+
+Card subscriptions are billed by Paystack and renew automatically. Naira passes
+through Credo are described in the Credo section further down.
 
 ### Endpoints
 
 ```http
 GET  /api/subscriptions/prices          (public)
-→ { prices: [ { tier:"premium"|"pro", priceId, name, description, currency:"usd",
-                unitAmount: 999,        // minor units (cents)
+→ { prices: [ { tier:"premium"|"pro", planCode:"PLN_…", name, description, currency:"ngn",
+                unitAmount: 250000,     // minor units (kobo)
                 interval:"month"|"year"|"week"|"day", intervalCount: 1, trialDays: null } ] }
-   // prices: [] means purchases are switched off — hide the upgrade buttons.
-   // 503 BILLING_UNAVAILABLE: Stripe could not be reached and nothing is cached.
+   // prices: [] means purchases are switched off: hide the upgrade buttons.
+   // 503 BILLING_UNAVAILABLE: Paystack could not be reached and nothing is cached.
 
 GET  /api/subscriptions/me
 → { userId, status:"active"|"inactive"|"past_due"|"cancelled", tier:"free"|"premium"|"pro",
-    stripeCustomerId, stripeSubscriptionId, currentPeriodEnd, cancelAtPeriodEnd }
+    provider:"paystack"|"credo"|null, paystackCustomerCode, paystackSubscriptionCode,
+    currentPeriodEnd, cancelAtPeriodEnd }
    // For new users with no subscription, returns default free (200, not 404)
 
 POST /api/subscriptions/checkout
-Body: { tier: "premium"|"pro" }   // or { priceId } with an id from GET /prices
-→ { url: "https://checkout.stripe.com/c/pay/...", id: "cs_..." }
+Body: { tier: "premium"|"pro" }   // or { planCode } with a code from GET /prices
+→ { url: "https://checkout.paystack.com/…", reference: "glm_…" }
    // 400 INVALID_PRICE           the plan is not one the server sells
-   // 409 CONFLICT                already subscribed — send the user to the portal
-   // 503 BILLING_NOT_CONFIGURED  Stripe / price ids are not set on the server
+   // 409 CONFLICT                already subscribed (or a Credo pass is running)
+   // 503 BILLING_NOT_CONFIGURED  Paystack / plan codes are not set on the server
+
+POST /api/subscriptions/confirm
+Body: { reference }
+→ { status: "paid"|"pending"|"failed", tier? }
+   // The server asks Paystack about the transaction. Safe to repeat.
+   // 404 when the reference is not this user's payment.
 
 POST /api/subscriptions/portal
-→ { url: "https://billing.stripe.com/p/session/..." }   // change plan, card, cancel
-   // 409 NO_BILLING_ACCOUNT      the user has never started a checkout
+→ { url: "https://paystack.com/manage/subscriptions/…" }   // update card, cancel
+   // 409 NO_BILLING_ACCOUNT      the user has no Paystack subscription
 
 POST /api/subscriptions/webhook
-→ Stripe-only, raw body, not called by frontend
+→ Paystack only (x-paystack-signature over the raw body); not called by the frontend
+
+GET  /account/paystack/return?reference=…
+→ HTML page Paystack redirects to after checkout; it re-checks the payment and
+  redirects to glimms://billing/return?status=paid|pending|failed|unknown
 ```
 
-### Frontend flow (mobile + web)
+### Frontend flow
 
-1. **Show paywall** when `GET /me` → `status:"inactive"` and user hits `SCAN_LIMIT_REACHED` or taps “Upgrade”.
-2. **Load plans** from `GET /prices` and render name, price and interval from the response. Do not hardcode prices or price ids in the client: the server decides what is for sale and which tier a price grants.
+1. **Show paywall** when `GET /me` → `status:"inactive"` and user hits `SCAN_LIMIT_REACHED` or taps "Upgrade".
+2. **Load plans** from `GET /prices` and render name, price and interval from the response. Do not hardcode prices or plan codes in the client.
 3. **Checkout:**
    ```ts
    const { data } = await api.post("/api/subscriptions/checkout", { tier: "premium" });
-   // Mobile: open with Expo WebBrowser; Web: window.location.href = data.url
-   await WebBrowser.openBrowserAsync(data.url);
+   // only open https URLs on paystack.com hosts
+   const result = await WebBrowser.openAuthSessionAsync(data.url, "glimms://billing/return");
+   const { data: payment } = await api.post("/api/subscriptions/confirm", { reference: data.reference });
    ```
-4. **Return URLs** are server settings: `STRIPE_CHECKOUT_SUCCESS_URL`, `STRIPE_CHECKOUT_CANCEL_URL`, `STRIPE_PORTAL_RETURN_URL`. Point them at https pages (universal/app links, or pages that redirect into the app). The mobile app does not depend on the redirect: it polls `GET /me` when the in-app browser closes.
-5. **Webhook:** Stripe → `POST /webhook` with `Stripe-Signature`. Backend updates `Subscription` and `User.tier`. Frontend polls `GET /me` after returning from checkout (every 2s for ~15s) to detect `status:"active"`.
-6. **Manage billing:** for a subscriber, `POST /portal` and open the returned URL the same way. Refetch `GET /me` when the browser closes.
-7. **Display tier:** `GET /users/me` returns `tier`. Show badge `FREE | PREMIUM | PRO` and scan quota from `GET /analytics/me`.
+   Poll `/confirm` a few times while it answers `pending`. If the user closed the browser, ask once anyway: they may have paid first.
+4. **After `paid`:** refresh the access token (it carries the tier), then refetch `GET /users/me` and `GET /subscriptions/me`.
+5. **Manage billing:** for a subscriber with `provider:"paystack"`, `POST /portal` and open the returned URL. Refetch `GET /me` when the browser closes.
+6. **Display tier:** `GET /users/me` returns `tier`. Show badge `FREE | PREMIUM | PRO` and scan quota from `GET /analytics/me`.
 
 ### Rules the server enforces
 
-* Only the prices in `STRIPE_PREMIUM_PRICE_ID` / `STRIPE_PRO_PRICE_ID` can be bought.
-* The tier granted comes from the **price on the Stripe subscription**, never from request data or metadata.
-* `trialing` counts as active; `past_due` keeps the tier while Stripe retries; any other state, and deletion, returns the user to `free`.
-* An invalid webhook signature is `400`; an unconfigured server answers the webhook with `503` so Stripe retries rather than dropping the event.
+* Only the plans in `PAYSTACK_PREMIUM_PLAN_CODE` / `PAYSTACK_PRO_PLAN_CODE` can be bought.
+* The tier granted comes from the **plan on the Paystack transaction or subscription**, never from request data or metadata.
+* Access is granted only from what Paystack answers when asked with the secret key (verify transaction, fetch subscription). The redirect and webhook bodies only say what to look up.
+* Cancelling keeps the plan until the paid period ends (`cancelAtPeriodEnd: true`), then the user returns to `free`.
+* A failed renewal shows as `past_due` and keeps the tier for 7 days, then the user returns to `free` until they pay.
+* Renewals or cancellations whose webhook was missed are picked up by a sweep within about a day.
+* An invalid webhook signature is `400`; an unconfigured server answers the webhook with `503` so Paystack retries rather than dropping the event. Redelivered events are applied once.
 
 ---
 
@@ -997,8 +1015,8 @@ export type SavedDesign = {
 };
 
 export type Subscription = {
-  userId:string; status:SubStatus; tier?:Tier; stripeCustomerId:string|null;
-  stripeSubscriptionId:string|null; currentPeriodEnd:string|null; cancelAtPeriodEnd:boolean;
+  userId:string; status:SubStatus; tier?:Tier; paystackCustomerCode:string|null;
+  paystackSubscriptionCode:string|null; currentPeriodEnd:string|null; cancelAtPeriodEnd:boolean;
 };
 
 export type JobProgress = {
@@ -1107,7 +1125,7 @@ export function useCatalog(filters: {vertical?:Vertical, tag?:string}) {
 | File pick | `<input type=file>` → `File` | `expo-image-picker` → `{uri,name,type}` |
 | Location | `navigator.geolocation` | `expo-location` (`requestForegroundPermissionsAsync`) |
 | Push | Web Push (not implemented) | Expo push tokens via `expo-notifications` |
-| Checkout | `window.location.href = url` (Stripe hosted) | `WebBrowser.openBrowserAsync(url)` → deep link return |
+| Checkout | `window.location.href = url` (Paystack hosted) | `WebBrowser.openAuthSessionAsync(url, returnUrl)` → `POST /confirm` |
 | WS URL | `NEXT_PUBLIC_WS_URL` | `EXPO_PUBLIC_WS_URL` (LAN IP for device) |
 | CORS | Must set `Origin` allowlist | No Origin header — auto passes |
 | Image display | `<img src={imageUrl} />` | `<Image source={{uri: imageUrl}} />` |
@@ -1121,7 +1139,7 @@ export function useCatalog(filters: {vertical?:Vertical, tag?:string}) {
 - [ ] **Handle token rotation atomically** — queue failed requests while refreshing (see interceptor).
 - [ ] **Validate `priceId` client-side** — only allow allowlisted `price_*` from your env, never accept from user input.
 - [ ] **Sanitize rich text** — `explanation`/`tips` from LLM may contain HTML; render as plain text or sanitize before `dangerouslySetInnerHTML`.
-- [ ] **Deep link validation** — when opening `data.url` for Stripe, verify it starts with `https://checkout.stripe.com/` before `openBrowserAsync`.
+- [ ] **Deep link validation** — when opening `data.url` for Paystack, verify it is https on a `paystack.com` host before opening it.
 - [ ] **WS auth** — fetch fresh `accessToken` before `io(auth:{token})`; on `connect_error` “Invalid or expired token” → refresh then reconnect.
 - [ ] **S3 URL expiry** — presigned URLs expire `900s`; on image `onError` 403, refetch `/catalog/:id/url`.
 
@@ -1248,7 +1266,7 @@ Frontend should **not** re-implement:
 * JWT signing / `bcrypt` — handled by `auth.service`.
 * S3 upload logic beyond `FormData` — backend does `sharp` + `uploadToS3` + `qualityGuard`.
 * BullMQ queue, AI pipeline steps (object detection 8001, attribute 8002, etc) — just poll/WS.
-* Stripe signature verification (`/webhook` needs `express.raw` + `Stripe-Signature` header) — Stripe → backend directly.
+* Paystack signature verification (`/webhook` needs `express.raw` + `x-paystack-signature` header): Paystack → backend directly.
 * Rate limiter counters — just display `X-Scan-*` headers; don’t calculate client-side.
 * Cleanup of expired refresh tokens — the backend does.
 
@@ -1302,7 +1320,7 @@ GET    /api/subscriptions/me         @requireAuth → Subscription (default free
 GET    /api/subscriptions/prices     (public) → { prices:[{ tier, priceId, name, currency, unitAmount, interval, … }] }
 POST   /api/subscriptions/checkout   @requireAuth { tier } | { priceId } → { url, id }
 POST   /api/subscriptions/portal     @requireAuth → { url }
-POST   /api/subscriptions/webhook    Stripe raw body + Stripe-Signature → { received:true }
+POST   /api/subscriptions/webhook    Paystack raw body + x-paystack-signature → { received:true }
 
 # Notifications
 POST   /api/notifications/device-token  @requireAuth { token, platform:"ios"|"android" } → 201
@@ -1371,5 +1389,5 @@ WS     /  (Socket.IO) auth: { token } or header Bearer
 | POST | `/api/subscriptions/credo/confirm` | Bearer | `{ reference }` → `{ status: paid\|pending\|failed, tier }` |
 | POST | `/api/subscriptions/credo/webhook` | Credo | header `X-Credo-Signature` |
 
-`GET /api/users/me` now includes `emailVerifiedAt`; `GET /api/subscriptions/me` includes `provider` (`stripe`, `credo` or `null`).
+`GET /api/users/me` now includes `emailVerifiedAt`; `GET /api/subscriptions/me` includes `provider` (`paystack`, `credo` or `null`).
 Emailed links open pages served by the API: `/account/reset-password`, `/account/verify-email`, and Credo returns the browser to `/account/credo/return`, which redirects to `glimms://billing/return?status=…`.
