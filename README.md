@@ -178,9 +178,6 @@ privacy policy URL, content ratings). Plans and prices are served by the API
 `PAYSTACK_PRO_PLAN_CODE` on the API, not in the app (see
 [`docs/PAYSTACK.md`](docs/PAYSTACK.md)).
 
-An animated walkthrough of the whole system is in
-[`docs/how-glimms-works.html`](docs/how-glimms-works.html) (open it in a browser).
-
 Open gaps are tracked in [`docs/GAP_ANALYSIS.md`](docs/GAP_ANALYSIS.md).
 
 ---
