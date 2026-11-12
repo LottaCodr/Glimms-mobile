@@ -66,7 +66,7 @@ router.post('/credo/confirm', requireAuth, validateBody(credoConfirmSchema), asy
 
 /** POST /api/subscriptions/credo/webhook  (called by Credo) */
 router.post('/credo/webhook', async (req: Request, res) => {
-  res.json(await credoService.handleWebhook(req.get('x-credo-signature'), req.body));
+  res.json(await credoService.handleWebhook(req.get('x-credo-signature') ?? req.get('credo-signature'), req.body));
 });
 
 /** POST /api/subscriptions/webhook  (called by Stripe — raw body) */

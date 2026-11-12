@@ -70,8 +70,8 @@ subscription cannot buy a pass, and the reverse (both answer 409).
 
 Everything is tested against a stubbed Credo. No call has been made to Credo's
 sandbox, so the first sandbox payment is the real test of the request and
-response shapes. Check in particular the webhook header name: the webhook guide
-uses `X-Credo-Signature`, another page of the docs says `credo-signature`.
+response shapes. The docs name the webhook signature header two ways
+(`X-Credo-Signature` and `credo-signature`); the API accepts either.
 
 ## Store policy
 
