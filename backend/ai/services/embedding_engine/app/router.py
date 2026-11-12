@@ -55,6 +55,8 @@ class SearchRequest(BaseModel):
     embedding: list[float] | None = None
     vector: list[float] | None = None
     query: list[float] | None = None
+    #: Search for neighbours of a vector that is already stored, by its id.
+    id: str | None = Field(default=None, max_length=512)
     top_k: int = Field(default=10, ge=1, le=100)
     namespace: str | None = Field(default=None, max_length=100)
     filter: dict[str, Any] | None = None
@@ -122,6 +124,15 @@ async def upsert(body: UpsertRequest) -> dict[str, Any]:
 async def search(body: SearchRequest) -> dict[str, Any]:
     _guard_durable_store()
     try:
+        if body.id is not None and body.embedding is None and body.vector is None and body.query is None:
+            neighbours = store.search_by_id(
+                body.id, top_k=body.top_k, namespace=body.namespace, filter_value=body.filter
+            )
+            return {
+                "matches": neighbours or [],
+                "found": neighbours is not None,
+                "namespace": body.namespace or store.namespace,
+            }
         matches = store.search(
             body.values(),
             top_k=body.top_k,

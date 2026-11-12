@@ -227,6 +227,27 @@ export const aiClient = {
     }, { retries: config.aiMaxRetries, correlationId, step: 'embedding_search', service: AI_SERVICE_SLUGS.embeddingEngine });
   },
 
+  /** Nearest neighbours of a vector that is already stored. `found: false` when the id is unknown. */
+  async searchEmbeddingsById(id: string, topK: number, namespace: string, filter: any, correlationId: string) {
+    return callWithRetry(async () => {
+      const { data } = await axios.post(`${config.ai.embeddingEngine}/search`, { id, top_k: topK, namespace, filter }, {
+        headers: headers(correlationId), timeout: t(config.aiTimeouts.fast),
+      });
+      return data;
+    }, { retries: config.aiMaxRetries, correlationId, step: 'embedding_search', service: AI_SERVICE_SLUGS.embeddingEngine });
+  },
+
+  async deleteEmbeddings(ids: string[], namespace: string, correlationId: string) {
+    return callWithRetry(async () => {
+      const { data } = await axios.delete(`${config.ai.embeddingEngine}/vectors`, {
+        data: { ids, namespace },
+        headers: headers(correlationId),
+        timeout: t(config.aiTimeouts.fast),
+      });
+      return data;
+    }, { retries: config.aiMaxRetries, correlationId, step: 'embedding_delete', service: AI_SERVICE_SLUGS.embeddingEngine });
+  },
+
   // §5.7 LLM reasoning POST /reason — slow path: real provider calls
   async reason(vertical:string, context:any, permutations:any[], correlationId: string) {
     return callWithRetry(async () => {

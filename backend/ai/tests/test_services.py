@@ -193,3 +193,45 @@ def test_free_fallback_defaults_and_builtin_providers(monkeypatch):
     monkeypatch.setenv("FALLBACK_LLM_DISABLE", "true")
     assert ProviderRouter().fallback_providers == []
     assert "free-fallback" not in llm_main.health()["providers_configured"]
+
+
+def test_evaluation_script_reports_placeholder_output_without_models(tmp_path, monkeypatch):
+    import io
+    import json
+
+    from PIL import Image
+
+    from scripts import evaluate_models
+
+    monkeypatch.setenv("MODELS_DIR", str(tmp_path / "no-models"))
+    monkeypatch.setenv("GLIMMS_ENV", "development")
+    photos = tmp_path / "photos"
+    photos.mkdir()
+    for name, colour in (("a.jpg", (200, 30, 30)), ("b.png", (30, 30, 200))):
+        buffer = io.BytesIO()
+        Image.new("RGB", (640, 480), colour).save(buffer, format="PNG" if name.endswith("png") else "JPEG")
+        (photos / name).write_bytes(buffer.getvalue())
+    (photos / "broken.jpg").write_bytes(b"not an image")
+    (photos / "notes.txt").write_text("ignored")
+
+    out = tmp_path / "out"
+    assert evaluate_models.main([str(photos), "--out", str(out)]) == 0
+
+    report = json.loads((out / "report.json").read_text())
+    assert report["summary"]["photos"] == 3 and report["summary"]["photos_failed"] == 1
+    assert report["summary"]["real_models"] == {"detector": False, "clip": False}
+    assert report["most_similar_pairs"] == []  # placeholder vectors are never compared
+    assert "Placeholder output" in (out / "report.html").read_text()
+    assert all((out / item["crop"]).is_file() for photo in report["photos"] for item in photo["items"])
+
+    assert evaluate_models.main([str(tmp_path / "empty-missing")]) == 2
+
+
+def test_evaluation_script_ranks_the_most_similar_pairs():
+    from scripts.evaluate_models import top_pairs
+
+    items = [{"embedding": [1.0, 0.0]}, {"embedding": [0.0, 1.0]}, {"embedding": [0.99, 0.1]}]
+    pairs = top_pairs(items, 2)
+    assert [(pair["a"], pair["b"]) for pair in pairs] == [(0, 2), (1, 2)]
+    assert pairs[0]["similarity"] > 0.99
+    assert top_pairs(items[:1], 5) == []
