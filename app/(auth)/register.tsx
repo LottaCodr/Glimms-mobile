@@ -1,7 +1,7 @@
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { ApiError } from "@/services/api.client";
 import { useAuthStore } from "@/store/auth.store";
-import { AppIcon, IoniconName } from "@/components/ui/Icon";
+import { AppIcon } from "@/components/ui/Icon";
 import { Colors, Radius, Spacing, Typography } from "@/theme";
 import { router } from "expo-router";
 import React, { useState } from "react";
@@ -13,9 +13,10 @@ import {
     StyleSheet,
     Text,
     TextInput,
-    TouchableOpacity,
     View,
 } from "react-native";
+import { Enter, Shakeable, Touchable } from "@/components/motion";
+import { SocialButtons } from "@/components/auth/SocialButtons";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -44,12 +45,13 @@ export default function Register() {
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [errorCount, setErrorCount] = useState(0);
 
     const handleSubmit = async () => {
         const email = form.email.trim();
-        if (!email || !form.password) return setError("Please fill in all fields");
-        if (!EMAIL_RE.test(email)) return setError("Enter a valid email address");
-        if (form.password.length < 8) return setError("Password must be at least 8 characters");
+        if (!email || !form.password) return fail("Please fill in all fields");
+        if (!EMAIL_RE.test(email)) return fail("Enter a valid email address");
+        if (form.password.length < 8) return fail("Password must be at least 8 characters");
 
         setLoading(true);
         setError("");
@@ -63,7 +65,11 @@ export default function Register() {
         }
     };
 
-    const notAvailable = () => setError("Social sign-up is coming soon — use email for now.");
+    /** Shows an error and shakes the form. */
+    const fail = (message: string) => {
+        setError(message);
+        setErrorCount((n) => n + 1);
+    };
 
     const strength =
         form.password.length === 0
@@ -92,8 +98,8 @@ export default function Register() {
                         </View>
                     </View>
 
-                    <Text style={styles.header}>Create your account</Text>
-                    <Text style={styles.subhead}>Sign up to start styling</Text>
+                    <Enter index={0}><Text style={styles.header}>Create your account</Text></Enter>
+                    <Enter index={1}><Text style={styles.subhead}>Sign up to start styling</Text></Enter>
 
                     {/* Name */}
                     <View style={styles.field}>
@@ -154,25 +160,25 @@ export default function Register() {
                                 returnKeyType="done"
                                 onSubmitEditing={handleSubmit}
                             />
-                            <TouchableOpacity
+                            <Touchable
                                 onPress={() => setShowPassword((v) => !v)}
                                 style={styles.eyeBtn}
                                 hitSlop={10}
                                 accessibilityLabel={showPassword ? "Hide password" : "Show password"}
                             >
                                 <AppIcon name={showPassword ? "eye-off-outline" : "eye-outline"} size={18} color={Colors.mid} />
-                            </TouchableOpacity>
+                            </Touchable>
                         </View>
                     </View>
 
                     {!!error && (
-                        <View style={styles.errorBox}>
+                        <Shakeable trigger={errorCount} style={styles.errorBox}>
                             <AppIcon name="alert-circle-outline" size={15} color={Colors.error} style={{ marginRight: 6 }} />
                             <Text style={styles.errorText}>{error}</Text>
-                        </View>
+                        </Shakeable>
                     )}
 
-                    <TouchableOpacity
+                    <Touchable
                         style={[styles.cta, loading && { opacity: 0.7 }]}
                         onPress={handleSubmit}
                         disabled={loading}
@@ -186,31 +192,27 @@ export default function Register() {
                                 <AppIcon name="arrow-forward" size={16} color={Colors.black} style={{ marginLeft: 6 }} />
                             </>
                         )}
-                    </TouchableOpacity>
+                    </Touchable>
 
-                    {/* Divider */}
-                    <View style={styles.dividerRow}>
-                        <View style={styles.dividerLine} />
-                        <Text style={styles.dividerLabel}>OR</Text>
-                        <View style={styles.dividerLine} />
-                    </View>
-
-                    {/* Social */}
-                    <TouchableOpacity style={styles.socialBtn} activeOpacity={0.85} onPress={notAvailable}>
-                        <AppIcon name={"logo-google" as IoniconName} size={17} color={Colors.text} style={{ marginRight: 10 }} />
-                        <Text style={styles.socialText}>Continue with Google</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.socialBtn, styles.appleBtn]} activeOpacity={0.85} onPress={notAvailable}>
-                        <AppIcon name={"logo-apple" as IoniconName} size={18} color="#000" style={{ marginRight: 10 }} />
-                        <Text style={[styles.socialText, { color: "#000" }]}>Continue with Apple</Text>
-                    </TouchableOpacity>
+                    <SocialButtons
+                        disabled={loading}
+                        onSignedIn={() => router.replace("/(tabs)/home")}
+                        onError={fail}
+                        divider={
+                            <View style={styles.dividerRow}>
+                                <View style={styles.dividerLine} />
+                                <Text style={styles.dividerLabel}>OR</Text>
+                                <View style={styles.dividerLine} />
+                            </View>
+                        }
+                    />
 
                     {/* Bottom */}
                     <View style={styles.bottomRow}>
                         <Text style={styles.bottomText}>Already have an account?</Text>
-                        <TouchableOpacity onPress={() => router.replace("/(auth)/login")} hitSlop={8}>
+                        <Touchable onPress={() => router.replace("/(auth)/login")} hitSlop={8}>
                             <Text style={styles.createLink}> Sign In</Text>
-                        </TouchableOpacity>
+                        </Touchable>
                     </View>
                 </ScrollView>
             </KeyboardAvoidingView>

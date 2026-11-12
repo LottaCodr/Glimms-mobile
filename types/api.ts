@@ -23,6 +23,8 @@ export type User = {
     avatarUrl: string | null;
     tier: Tier;
     isActive: boolean;
+    /** Null until the user confirms their email address. */
+    emailVerifiedAt?: string | null;
     createdAt: string;
     updatedAt: string;
 };
@@ -291,6 +293,8 @@ export type Subscription = {
     userId: string;
     status: SubStatus;
     tier?: Tier;
+    /** Who bills it: a Stripe subscription renews; a Credo pass ends on `currentPeriodEnd`. */
+    provider?: "stripe" | "credo" | null;
     stripeCustomerId: string | null;
     stripeSubscriptionId: string | null;
     currentPeriodEnd: string | null;
@@ -298,6 +302,17 @@ export type Subscription = {
 };
 
 export type CheckoutResponse = { url: string; id: string };
+
+/** A naira pass sold through Credo. `amount` is in kobo; it does not renew. */
+export type CredoPlan = {
+    tier: Exclude<Tier, "free">;
+    currency: string;
+    amount: number;
+    periodDays: number;
+    feeOnTop: boolean;
+};
+export type CredoCheckoutResponse = { url: string; reference: string };
+export type CredoPaymentStatus = "paid" | "pending" | "failed";
 
 export type PaidTier = Exclude<Tier, "free">;
 

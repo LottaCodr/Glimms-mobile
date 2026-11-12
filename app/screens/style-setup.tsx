@@ -5,7 +5,8 @@
  * the moment — guide §8A inputContext.
  */
 import React, { useState } from 'react'
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Touchable } from '@/components/motion'
 import { router, useLocalSearchParams } from 'expo-router'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Colors, Radius, Spacing, Typography } from '@/theme'
@@ -82,11 +83,11 @@ export default function StyleSetupScreen() {
         {/* Vertical */}
         <Text style={styles.sectionLabel}>WHAT ARE WE STYLING?</Text>
         <View style={styles.verticalRow}>
-          {VERTICALS.map((v) => {
+          {VERTICALS.map((v, enterIdx) => {
             const active = vertical === v.id
             return (
-              <TouchableOpacity
-                key={v.id}
+              <Touchable
+                key={v.id} enterIndex={enterIdx}
                 onPress={() => setVertical(v.id)}
                 style={[styles.verticalCard, active && styles.verticalCardActive]}
                 activeOpacity={0.8}
@@ -95,7 +96,7 @@ export default function StyleSetupScreen() {
               >
                 <AppIcon name={v.icon} size={22} color={active ? Colors.gold : Colors.mid} />
                 <Text style={[styles.verticalLabel, active && { color: Colors.gold }]}>{v.label}</Text>
-              </TouchableOpacity>
+              </Touchable>
             )
           })}
         </View>
@@ -103,11 +104,11 @@ export default function StyleSetupScreen() {
         {/* Occasion */}
         <Text style={styles.sectionLabel}>OCCASION</Text>
         <View style={{ gap: 10 }}>
-          {OCCASIONS.map((o) => {
+          {OCCASIONS.map((o, enterIdx) => {
             const active = occasion === o.id
             return (
-              <TouchableOpacity
-                key={o.id}
+              <Touchable
+                key={o.id} enterIndex={enterIdx}
                 onPress={() => _setOccasion(o.id)}
                 style={[styles.row, active && styles.rowActive]}
                 activeOpacity={0.8}
@@ -124,7 +125,7 @@ export default function StyleSetupScreen() {
                 <View style={[styles.radio, active && styles.radioActive]}>
                   {active && <AppIcon name="checkmark" size={11} color={Colors.black} />}
                 </View>
-              </TouchableOpacity>
+              </Touchable>
             )
           })}
         </View>
@@ -132,11 +133,11 @@ export default function StyleSetupScreen() {
         {/* Vibe */}
         <Text style={[styles.sectionLabel, { marginTop: Spacing.lg }]}>VIBE</Text>
         <View style={styles.vibeGrid}>
-          {VIBES.map((v) => {
+          {VIBES.map((v, enterIdx) => {
             const active = vibes.includes(v.id)
             return (
-              <TouchableOpacity
-                key={v.id}
+              <Touchable
+                key={v.id} enterIndex={enterIdx}
                 onPress={() => setVibes((l) => toggle(l, v.id))}
                 style={[styles.vibeCard, active && styles.vibeCardActive]}
                 activeOpacity={0.8}
@@ -154,7 +155,7 @@ export default function StyleSetupScreen() {
                     <AppIcon name="checkmark" size={10} color={Colors.black} />
                   </View>
                 )}
-              </TouchableOpacity>
+              </Touchable>
             )
           })}
         </View>
@@ -164,7 +165,7 @@ export default function StyleSetupScreen() {
         <View style={styles.chipsWrap}>
           {COLOR_MOODS.map((m) => (
             <View key={m.id} style={{ alignItems: 'center', gap: 6 }}>
-              <TouchableOpacity
+              <Touchable
                 onPress={() => setColorMood(colorMood === m.id ? null : m.id)}
                 style={[
                   styles.colorDot,
@@ -175,7 +176,7 @@ export default function StyleSetupScreen() {
                 accessibilityLabel={`${m.label} colour mood`}
               >
                 {colorMood === m.id && <AppIcon name="checkmark" size={14} color={m.id === 'mono' ? Colors.gold : Colors.black} />}
-              </TouchableOpacity>
+              </Touchable>
               <Text style={[styles.colorLabel, colorMood === m.id && { color: Colors.gold }]}>{m.label}</Text>
             </View>
           ))}

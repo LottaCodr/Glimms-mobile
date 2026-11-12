@@ -2,15 +2,15 @@
  * Design-session progress + results — the landing screen after a scan (guide §8A step 4).
  * Realtime via Socket.IO (`subscribe:session`) with REST polling fallback.
  */
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
     Alert,
     ScrollView,
     StyleSheet,
     Text,
-    TouchableOpacity,
     View,
 } from "react-native";
+import { Confetti, CountUp, Enter, ProgressBar, Pulse, Touchable, haptic } from "@/components/motion";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -63,12 +63,27 @@ export default function SessionScreen() {
         [session.steps],
     );
 
+    // Celebrate only when the user watched the looks being made, not when
+    // they reopen finished results later.
+    const [watched, setWatched] = useState(false);
+    const inProgress = !["completed", "failed", "cancelled"].includes(session.status ?? "");
+    useEffect(() => {
+        if (!inProgress) return;
+        const timer = setTimeout(() => setWatched(true), 0);
+        return () => clearTimeout(timer);
+    }, [inProgress]);
+    const finishedLive = watched && session.status === "completed" && session.designs.length > 0;
+    useEffect(() => {
+        if (finishedLive) haptic("success");
+    }, [finishedLive]);
+
     const onSave = async (design: GeneratedDesign, index: number) => {
         if (!id || savedKeys[index]) return;
         setSavedKeys((s) => ({ ...s, [index]: true }));
         try {
             // Session results don't carry a jobId; the session_id identifies the source.
             await saveDesign.mutateAsync({ sourceId: id, design });
+            haptic("success");
             toast.success("Look saved");
         } catch (e) {
             setSavedKeys((s) => ({ ...s, [index]: false }));
@@ -145,7 +160,7 @@ export default function SessionScreen() {
                         const mockup = design.mockupUrl ?? design.mockup_url;
                         const isSaved = !!savedKeys[i];
                         return (
-                            <View key={i} style={styles.designCard}>
+                            <Enter key={i} index={i} style={styles.designCard}>
                                 {typeof mockup === "string" && !!mockup && (
                                     <Image source={{ uri: mockup }} style={styles.mockup} contentFit="cover" transition={180} />
                                 )}
@@ -176,7 +191,7 @@ export default function SessionScreen() {
                                             ))}
                                         </View>
                                     )}
-                                    <TouchableOpacity
+                                    <Touchable
                                         style={[styles.saveBtn, isSaved && styles.saveBtnDone]}
                                         onPress={() => void onSave(design, i)}
                                         disabled={isSaved || saveDesign.isPending}
@@ -191,12 +206,13 @@ export default function SessionScreen() {
                                         <Text style={[styles.saveBtnText, isSaved && { color: Colors.gold }]}>
                                             {isSaved ? "Saved" : "Save look"}
                                         </Text>
-                                    </TouchableOpacity>
+                                    </Touchable>
                                 </View>
-                            </View>
+                            </Enter>
                         );
                     })}
                 </ScrollView>
+                {finishedLive && <Confetti />}
             </SafeAreaView>
         );
     }
@@ -223,18 +239,18 @@ export default function SessionScreen() {
     // ── In progress ──────────────────────────────────────────────────────────
     return (
         <SafeAreaView style={[styles.root, styles.center, { backgroundColor: Colors.bg }]} edges={["top", "bottom"]}>
-            <View style={styles.pulseCircle}>
-                <AppIcon name={Icons.sparkle} size={44} color={Colors.gold} />
-            </View>
+            <Pulse>
+                <View style={styles.pulseCircle}>
+                    <AppIcon name={Icons.sparkle} size={44} color={Colors.gold} />
+                </View>
+            </Pulse>
             <Text style={styles.statusLabel}>{session.label}</Text>
             <Text style={styles.statusSub}>
                 {SESSION_STEP_LABELS[session.status ?? "created"] ?? "Working on it…"}
             </Text>
 
-            <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${Math.max(4, session.progress)}%` }]} />
-            </View>
-            <Text style={styles.progressPct}>{session.progress}%</Text>
+            <ProgressBar progress={Math.max(4, session.progress) / 100} style={styles.progressTrack} accessibilityLabel="Design progress" />
+            <CountUp value={session.progress} format={(n) => `${Math.round(n)}%`} style={styles.progressPct} />
 
             <View style={styles.stepsCard}>
                 {steps.map(({ key, status }) => {
@@ -262,9 +278,9 @@ export default function SessionScreen() {
                 </View>
             )}
 
-            <TouchableOpacity onPress={onCancel} style={styles.cancelBtn} hitSlop={8}>
+            <Touchable onPress={onCancel} style={styles.cancelBtn} hitSlop={8}>
                 <Text style={{ color: Colors.mid, fontSize: 14 }}>Cancel</Text>
-            </TouchableOpacity>
+            </Touchable>
         </SafeAreaView>
     );
 }

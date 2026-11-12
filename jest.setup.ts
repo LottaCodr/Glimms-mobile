@@ -26,6 +26,8 @@ jest.mock("expo-secure-store", () => {
 
 jest.mock("expo-web-browser", () => ({
     openBrowserAsync: jest.fn(async () => ({ type: "opened" })),
+    openAuthSessionAsync: jest.fn(async () => ({ type: "dismiss" })),
+    maybeCompleteAuthSession: jest.fn(),
 }));
 
 // Icon fonts load asynchronously on a device; in tests an icon is just its name.
@@ -38,3 +40,18 @@ jest.mock("@expo/vector-icons", () => {
 jest.mock("react-native-safe-area-context", () =>
     require("react-native-safe-area-context/jest/mock").default,
 );
+
+// Animations run on a native thread; under Jest they resolve instantly.
+jest.mock("react-native-worklets", () => require("react-native-worklets/src/mock"));
+jest.mock("react-native-reanimated", () => ({
+    ...require("react-native-reanimated/mock"),
+    useReducedMotion: () => false,
+}));
+
+jest.mock("expo-haptics", () => ({
+    impactAsync: jest.fn(async () => {}),
+    notificationAsync: jest.fn(async () => {}),
+    selectionAsync: jest.fn(async () => {}),
+    ImpactFeedbackStyle: { Light: "light", Medium: "medium", Heavy: "heavy" },
+    NotificationFeedbackType: { Success: "success", Warning: "warning", Error: "error" },
+}));

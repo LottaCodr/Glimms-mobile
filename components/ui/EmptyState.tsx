@@ -1,3 +1,4 @@
+import { Enter, Pop } from "@/components/motion";
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Colors, Spacing, Typography } from "@/theme";
@@ -17,11 +18,13 @@ type Props = {
 export function EmptyState({ icon, title, subtitle, actionLabel, onAction, compact }: Props) {
     return (
         <View style={[styles.wrap, compact && { paddingVertical: Spacing.lg }]}>
-            <View style={styles.iconCircle}>
-                <AppIcon name={icon} size={30} color={Colors.gold} />
-            </View>
-            <Text style={styles.title}>{title}</Text>
-            {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+            <Pop>
+                <View style={styles.iconCircle}>
+                    <AppIcon name={icon} size={30} color={Colors.gold} />
+                </View>
+            </Pop>
+            <Enter index={1}><Text style={styles.title}>{title}</Text></Enter>
+            {!!subtitle && <Enter index={2}><Text style={styles.subtitle}>{subtitle}</Text></Enter>}
             {!!actionLabel && !!onAction && (
                 <PrimaryButton label={actionLabel} onPress={onAction} style={{ marginTop: Spacing.md, minWidth: 180 }} />
             )}

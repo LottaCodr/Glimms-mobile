@@ -1,5 +1,6 @@
 /**
- * Subscriptions (Stripe) — guide §12.
+ * Subscriptions — guide §12. Stripe (renewing card subscriptions) and Credo by
+ * eTranzact (naira card / bank-transfer passes that last a fixed period).
  *
  * Plans and prices come from the API (GET /prices); the app holds no price IDs.
  * Checkout: POST /checkout → open the hosted Stripe page in expo-web-browser →
@@ -10,6 +11,9 @@ import * as WebBrowser from "expo-web-browser";
 import { apiClient, ApiError } from "./api.client";
 import type {
     CheckoutResponse,
+    CredoCheckoutResponse,
+    CredoPaymentStatus,
+    CredoPlan,
     PaidTier,
     PlanPrice,
     PortalResponse,
@@ -26,6 +30,27 @@ function assertHostedBy(url: unknown, origin: string): asserts url is string {
         });
     }
 }
+
+/** Credo's hosted checkout lives on these hosts (live and sandbox). */
+const CREDO_HOST = /(^|\.)(credocentral\.com|credodemo\.com)$/;
+
+function assertCredoCheckout(url: unknown): asserts url is string {
+    let host = "";
+    if (typeof url === "string" && url.startsWith("https://")) {
+        // Authority = everything up to the first "/", "?" or "#"; reject userinfo tricks.
+        const authority = url.slice("https://".length).split(/[/?#]/)[0];
+        if (!authority.includes("@")) host = authority.split(":")[0].toLowerCase();
+    }
+    if (!host || !CREDO_HOST.test(host)) {
+        throw new ApiError(400, {
+            error: "Unexpected payment link — refusing to open it.",
+            code: "UNTRUSTED_REDIRECT",
+        });
+    }
+}
+
+/** Where the API sends the browser when a Credo payment finishes. */
+export const CREDO_RETURN_URL = "glimms://billing/return";
 
 export const subscriptionService = {
     /** Free users get a default `{ status: "inactive", tier: "free" }` (200, never 404). */
@@ -57,6 +82,46 @@ export const subscriptionService = {
         const { data } = await apiClient.post<PortalResponse>("/api/subscriptions/portal");
         assertHostedBy(data?.url, "https://billing.stripe.com");
         return WebBrowser.openBrowserAsync(data.url);
+    },
+
+    // ── Credo (eTranzact): naira card / bank transfer passes ────────────────
+
+    /** Naira passes that can be bought. Empty when Credo is switched off. */
+    async credoPlans(): Promise<CredoPlan[]> {
+        const { data } = await apiClient.get<{ plans?: CredoPlan[] }>("/api/subscriptions/credo/plans");
+        return Array.isArray(data?.plans) ? data.plans : [];
+    },
+
+    /**
+     * Opens Credo's hosted checkout and resolves when the browser closes or
+     * returns to the app. The reference is what `confirmCredo` checks.
+     */
+    async openCredoCheckout(tier: PaidTier): Promise<{ reference: string; result: WebBrowser.WebBrowserAuthSessionResult }> {
+        const { data } = await apiClient.post<CredoCheckoutResponse>("/api/subscriptions/credo/checkout", { tier });
+        assertCredoCheckout(data?.url);
+        const result = await WebBrowser.openAuthSessionAsync(data.url, CREDO_RETURN_URL);
+        return { reference: data.reference, result };
+    },
+
+    /** Asks the API to check the payment with Credo. Safe to call repeatedly. */
+    async confirmCredo(reference: string): Promise<CredoPaymentStatus> {
+        const { data } = await apiClient.post<{ status: CredoPaymentStatus }>("/api/subscriptions/credo/confirm", { reference });
+        return data.status;
+    },
+
+    /**
+     * Bank transfers can take a little while to land. Polls until the payment
+     * is paid or failed, or gives up and reports it as still pending.
+     */
+    async waitForCredo(reference: string, opts: { attempts?: number; intervalMs?: number } = {}): Promise<CredoPaymentStatus> {
+        const attempts = opts.attempts ?? 6;
+        const intervalMs = opts.intervalMs ?? 2500;
+        let status = await this.confirmCredo(reference);
+        for (let i = 0; i < attempts && status === "pending"; i++) {
+            await new Promise((r) => setTimeout(r, intervalMs));
+            status = await this.confirmCredo(reference);
+        }
+        return status;
     },
 
     /**

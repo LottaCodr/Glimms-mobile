@@ -3,13 +3,13 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   ScrollView,
   TextInput,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native'
+import { Touchable } from '@/components/motion'
+import { SocialButtons, socialSignInAvailable } from '@/components/auth/SocialButtons'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Colors, Radius, Spacing, Typography } from '@/theme'
@@ -18,7 +18,6 @@ import { useAuthStore } from '@/store/auth.store'
 import { useOnboardingStore } from '@/store/onboarding.store'
 import { userService } from '@/services/user.service'
 import { ApiError } from '@/services/api.client'
-import { AppIcon, IoniconName } from '@/components/ui/Icon'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -77,8 +76,6 @@ export default function SignUpScreen() {
     }
   }
 
-  const notAvailable = () => Alert.alert('Coming soon', 'Social sign-in will be available in a future update.')
-
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <KeyboardAvoidingView
@@ -98,19 +95,13 @@ export default function SignUpScreen() {
           <Text style={styles.sub}>Save your style profile and outfits</Text>
         </View>
 
-        <View style={styles.socialBtns}>
-          {[
-            { label: 'Continue with Google', icon: 'logo-google' as IoniconName },
-            { label: 'Continue with Apple', icon: 'logo-apple' as IoniconName },
-          ].map((btn) => (
-            <TouchableOpacity key={btn.label} style={styles.socialBtn} activeOpacity={0.8} onPress={notAvailable}>
-              <AppIcon name={btn.icon} size={18} color={Colors.text} style={{ marginRight: 8 }} />
-              <Text style={styles.socialBtnText}>{btn.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <SocialButtons
+          disabled={loading}
+          onSignedIn={() => router.replace('/(tabs)/home')}
+          onError={setError}
+        />
 
-        <Divider label="or use email" />
+        <Divider label={socialSignInAvailable() ? 'or use email' : 'sign up with email'} />
 
         <View style={styles.fields}>
           <TextInput
@@ -146,9 +137,9 @@ export default function SignUpScreen() {
 
         <GoldButton label="Create Account" onPress={submit} loading={loading} />
 
-        <TouchableOpacity onPress={() => router.push('/(auth)/login')} style={{ marginTop: 14 }}>
+        <Touchable onPress={() => router.push('/(auth)/login')} style={{ marginTop: 14 }}>
           <Text style={[styles.legal, { color: Colors.gold }]}>Already have an account? Sign in</Text>
-        </TouchableOpacity>
+        </Touchable>
 
           <Text style={styles.legal}>
             By continuing you agree to our{' '}

@@ -3,7 +3,8 @@
  * Drive it via `toast.success/error/info/warning` from `@/store/toast.store`.
  */
 import React, { useEffect, useState } from "react";
-import { Animated, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Animated, StyleSheet, Text, View } from "react-native";
+import { Touchable } from "@/components/motion";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Colors, Radius, Spacing } from "@/theme";
 import { AppIcon } from "@/components/ui/Icon";
@@ -35,9 +36,9 @@ function ToastRow({ item }: { item: ToastItem }) {
             <Text style={styles.message} numberOfLines={2}>
                 {item.message}
             </Text>
-            <TouchableOpacity onPress={() => dismiss(item.id)} hitSlop={10} accessibilityLabel="Dismiss">
+            <Touchable onPress={() => dismiss(item.id)} hitSlop={10} accessibilityLabel="Dismiss">
                 <AppIcon name="close" size={14} color={Colors.mid} />
-            </TouchableOpacity>
+            </Touchable>
         </Animated.View>
     );
 }

@@ -2,7 +2,8 @@ import { SubscriptionPlan } from '@/hooks/useSubscription';
 import { Colors, Radius, Spacing, Typography } from '@/theme';
 import { AppIcon } from '@/components/ui/Icon';
 import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { Touchable } from '@/components/motion';
 import { LinearGradient } from 'expo-linear-gradient';
 
 interface PricingCardProps {
@@ -61,7 +62,7 @@ export const PricingCard: React.FC<PricingCardProps> = ({ plan, onSelect, loadin
                 ))}
             </View>
 
-            <TouchableOpacity
+            <Touchable
                 style={[
                     styles.button,
                     { backgroundColor: plan.isPopular ? Colors.gold : Colors.card2 },
@@ -84,7 +85,7 @@ export const PricingCard: React.FC<PricingCardProps> = ({ plan, onSelect, loadin
                         {isFree ? 'Current plan' : purchasable ? 'Choose Plan' : 'Coming soon'}
                     </Text>
                 )}
-            </TouchableOpacity>
+            </Touchable>
         </View>
     );
 };

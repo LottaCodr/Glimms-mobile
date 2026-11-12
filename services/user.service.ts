@@ -16,11 +16,6 @@ export const userService = {
         return data;
     },
 
-    /** Soft-deactivates the account (isActive=false). Caller should clear tokens. */
-    async deactivate(): Promise<void> {
-        await apiClient.delete("/api/users/me");
-    },
-
     /** Returns `{}` when no preferences exist yet. */
     async getPreferences(): Promise<UserPreferences | Record<string, never>> {
         const { data } = await apiClient.get("/api/users/me/preferences");

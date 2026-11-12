@@ -13,9 +13,10 @@ import {
     StyleSheet,
     Text,
     TextInput,
-    TouchableOpacity,
     View,
 } from "react-native";
+import { Enter, Shakeable, Touchable } from "@/components/motion";
+import { SocialButtons } from "@/components/auth/SocialButtons";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -69,6 +70,7 @@ export default function Login() {
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [errorCount, setErrorCount] = useState(0);
     // Seconds remaining on a 429 rate-limit cooldown (from Retry-After).
     const [cooldown, setCooldown] = useState(0);
 
@@ -82,8 +84,8 @@ export default function Login() {
     const handleSubmit = async () => {
         if (cooldown > 0) return;
         const email = form.email.trim();
-        if (!email || !form.password) return setError("Please fill in all fields");
-        if (!EMAIL_RE.test(email)) return setError("Enter a valid email address");
+        if (!email || !form.password) return fail("Please fill in all fields");
+        if (!EMAIL_RE.test(email)) return fail("Enter a valid email address");
 
         setLoading(true);
         setError("");
@@ -91,7 +93,7 @@ export default function Login() {
             await login(email, form.password);
             router.replace("/(tabs)/home");
         } catch (err) {
-            setError(authErrorMessage(err));
+            fail(authErrorMessage(err));
             if (err instanceof ApiError && err.status === 429) {
                 setCooldown(err.retryAfterSeconds ?? 15 * 60);
             }
@@ -100,8 +102,11 @@ export default function Login() {
         }
     };
 
-    // Social providers aren't wired on the backend yet (guide §21).
-    const notAvailable = () => setError("Social sign-in is coming soon — use email for now.");
+    /** Shows an error and shakes the form. */
+    const fail = (message: string) => {
+        setError(message);
+        setErrorCount((n) => n + 1);
+    };
 
     return (
         <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
@@ -121,8 +126,8 @@ export default function Login() {
                         </View>
                     </View>
 
-                    <Text style={styles.header}>Welcome back</Text>
-                    <Text style={styles.subhead}>Sign in to continue styling</Text>
+                    <Enter index={0}><Text style={styles.header}>Welcome back</Text></Enter>
+                    <Enter index={1}><Text style={styles.subhead}>Sign in to continue styling</Text></Enter>
 
                     <Field
                         label="Email Address"
@@ -144,25 +149,34 @@ export default function Login() {
                         returnKeyType="done"
                         onSubmitEditing={handleSubmit}
                         right={
-                            <TouchableOpacity
+                            <Touchable
                                 onPress={() => setShowPassword((v) => !v)}
                                 style={styles.eyeBtn}
                                 hitSlop={10}
                                 accessibilityLabel={showPassword ? "Hide password" : "Show password"}
                             >
                                 <AppIcon name={showPassword ? "eye-off-outline" : "eye-outline"} size={18} color={Colors.mid} />
-                            </TouchableOpacity>
+                            </Touchable>
                         }
                     />
 
+                    <Touchable
+                        onPress={() => router.push("/(auth)/forgot-password")}
+                        style={{ alignSelf: "flex-end", paddingVertical: 10 }}
+                        hitSlop={8}
+                        accessibilityRole="link"
+                    >
+                        <Text style={{ color: Colors.gold, fontSize: 13, fontWeight: "600" }}>Forgot password?</Text>
+                    </Touchable>
+
                     {!!error && (
-                        <View style={styles.errorBox}>
+                        <Shakeable trigger={errorCount} style={styles.errorBox}>
                             <AppIcon name="alert-circle-outline" size={15} color={Colors.error} style={{ marginRight: 6 }} />
                             <Text style={styles.errorText}>{error}</Text>
-                        </View>
+                        </Shakeable>
                     )}
 
-                    <TouchableOpacity
+                    <Touchable
                         style={[styles.cta, (loading || cooldown > 0) && { opacity: 0.55 }]}
                         onPress={handleSubmit}
                         disabled={loading || cooldown > 0}
@@ -180,31 +194,27 @@ export default function Login() {
                                 <AppIcon name="arrow-forward" size={16} color={Colors.black} style={{ marginLeft: 6 }} />
                             </>
                         )}
-                    </TouchableOpacity>
+                    </Touchable>
 
-                    {/* Divider */}
-                    <View style={styles.dividerRow}>
-                        <View style={styles.dividerLine} />
-                        <Text style={styles.dividerLabel}>OR</Text>
-                        <View style={styles.dividerLine} />
-                    </View>
-
-                    {/* Social */}
-                    <TouchableOpacity style={styles.socialBtn} activeOpacity={0.85} onPress={notAvailable}>
-                        <AppIcon name={"logo-google" as IoniconName} size={17} color={Colors.text} style={{ marginRight: 10 }} />
-                        <Text style={styles.socialText}>Continue with Google</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.socialBtn, styles.appleBtn]} activeOpacity={0.85} onPress={notAvailable}>
-                        <AppIcon name={"logo-apple" as IoniconName} size={18} color="#000" style={{ marginRight: 10 }} />
-                        <Text style={[styles.socialText, { color: "#000" }]}>Continue with Apple</Text>
-                    </TouchableOpacity>
+                    <SocialButtons
+                        disabled={loading}
+                        onSignedIn={() => router.replace("/(tabs)/home")}
+                        onError={fail}
+                        divider={
+                            <View style={styles.dividerRow}>
+                                <View style={styles.dividerLine} />
+                                <Text style={styles.dividerLabel}>OR</Text>
+                                <View style={styles.dividerLine} />
+                            </View>
+                        }
+                    />
 
                     {/* Bottom */}
                     <View style={styles.bottomRow}>
                         <Text style={styles.bottomText}>Don’t have an account?</Text>
-                        <TouchableOpacity onPress={() => router.push("/(auth)/register")} hitSlop={8}>
+                        <Touchable onPress={() => router.push("/(auth)/register")} hitSlop={8}>
                             <Text style={styles.createLink}> Create Account</Text>
-                        </TouchableOpacity>
+                        </Touchable>
                     </View>
                 </ScrollView>
             </KeyboardAvoidingView>

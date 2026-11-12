@@ -1,3 +1,4 @@
+import { Enter } from '@/components/motion'
 import React from 'react'
 import { View, Text, StyleSheet, ScrollView } from 'react-native'
 import { useRouter } from 'expo-router'
@@ -29,8 +30,8 @@ export default function HowItWorksScreen() {
           <Text style={styles.accent}>perfect outfit</Text>
         </Text>
 
-        {STEPS.map((s) => (
-          <View key={s.step} style={styles.stepCard}>
+        {STEPS.map((s, i) => (
+          <Enter key={s.step} index={i + 1} style={styles.stepCard}>
             <View style={styles.stepIcon}>
               <AppIcon name={s.icon} size={22} color={Colors.gold} />
             </View>
@@ -39,7 +40,7 @@ export default function HowItWorksScreen() {
               <Text style={styles.stepTitle}>{s.title}</Text>
               <Text style={styles.stepDesc}>{s.desc}</Text>
             </View>
-          </View>
+          </Enter>
         ))}
 
         {/* Mini preview */}

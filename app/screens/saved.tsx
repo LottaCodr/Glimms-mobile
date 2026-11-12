@@ -4,9 +4,16 @@
  */
 import React from 'react'
 import {
-  View, Text, StyleSheet, TouchableOpacity,
-  FlatList, RefreshControl, ActivityIndicator, Alert, Share,
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  RefreshControl,
+  ActivityIndicator,
+  Alert,
+  Share,
 } from 'react-native'
+import { Enter, Touchable } from '@/components/motion'
 import { Image } from 'expo-image'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -28,7 +35,7 @@ import type { SavedDesign } from '@/types/api'
 const TABS = ['All', 'Favorites'] as const
 type Tab = (typeof TABS)[number]
 
-function DesignCard({ design }: { design: SavedDesign }) {
+function DesignCard({ design, enterIndex }: { design: SavedDesign; enterIndex?: number }) {
   const router = useRouter()
   const favorite = useToggleFavorite()
   const del = useDeleteSavedDesign()
@@ -62,7 +69,8 @@ function DesignCard({ design }: { design: SavedDesign }) {
     .map(String)
 
   return (
-    <TouchableOpacity
+    <Touchable
+      enterIndex={enterIndex}
       style={styles.card}
       activeOpacity={0.92}
       onPress={() => router.push(`/saved/${design.id}` as any)}
@@ -98,7 +106,7 @@ function DesignCard({ design }: { design: SavedDesign }) {
         )}
 
         <View style={styles.actionRow}>
-          <TouchableOpacity
+          <Touchable
             style={styles.actionBtn}
             onPress={() => favorite.mutate(design.id)}
             disabled={favorite.isPending}
@@ -114,22 +122,22 @@ function DesignCard({ design }: { design: SavedDesign }) {
             <Text style={[styles.actionBtnText, design.isFavorite && { color: Colors.gold }]}>
               {design.isFavorite ? 'Favorited' : 'Favorite'}
             </Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn} onPress={onShare} accessibilityLabel="Share look">
+          </Touchable>
+          <Touchable style={styles.actionBtn} onPress={onShare} accessibilityLabel="Share look">
             <AppIcon name={Icons.share} size={14} color={Colors.mid} style={{ marginRight: 6 }} />
             <Text style={styles.actionBtnText}>Share</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
+          </Touchable>
+          <Touchable
             style={styles.deleteBtn}
             onPress={onDelete}
             disabled={del.isPending}
             accessibilityLabel="Delete look"
           >
             <AppIcon name={Icons.trash} size={14} color={Colors.error} />
-          </TouchableOpacity>
+          </Touchable>
         </View>
       </View>
-    </TouchableOpacity>
+    </Touchable>
   )
 }
 
@@ -151,7 +159,7 @@ export default function NewSavedScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>Saved Outfits</Text>
+        <Enter><Text style={styles.title}>Saved Outfits</Text></Enter>
         <Text style={styles.subtitle}>{total} look{total === 1 ? '' : 's'} saved</Text>
       </View>
 
@@ -184,7 +192,7 @@ export default function NewSavedScreen() {
             tintColor={Colors.gold}
           />
         }
-        renderItem={({ item }) => <DesignCard design={item} />}
+        renderItem={({ item, index }) => <DesignCard design={item} enterIndex={index} />}
         ListEmptyComponent={
           query.isLoading ? (
             <View style={{ paddingTop: 20 }}>

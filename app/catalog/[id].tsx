@@ -12,9 +12,9 @@ import {
     StyleSheet,
     Text,
     TextInput,
-    TouchableOpacity,
     View,
 } from "react-native";
+import { Touchable } from "@/components/motion";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -212,7 +212,7 @@ export default function CatalogItemScreen() {
                                 <PrimaryButton label="Save" onPress={saveLabel} small loading={update.isPending} />
                             </View>
                         ) : (
-                            <TouchableOpacity
+                            <Touchable
                                 style={styles.labelRow}
                                 onPress={() => {
                                     setLabelDraft(item.label);
@@ -223,7 +223,7 @@ export default function CatalogItemScreen() {
                             >
                                 <Text style={styles.label}>{item.label}</Text>
                                 <AppIcon name={Icons.edit} size={15} color={Colors.mid} />
-                            </TouchableOpacity>
+                            </Touchable>
                         )}
                         <Text style={styles.metaText}>
                             {[item.category, item.texture, item.pattern].filter(Boolean).join(" · ")}
@@ -266,13 +266,13 @@ export default function CatalogItemScreen() {
                     <View style={styles.section}>
                         <Text style={styles.sectionLabel}>YOUR TAGS</Text>
                         <View style={styles.chipWrap}>
-                            {item.tags.map((t) => (
-                                <TouchableOpacity key={t} onPress={() => removeTag(t)} activeOpacity={0.7}>
+                            {item.tags.map((t, enterIdx) => (
+                                <Touchable key={t} enterIndex={enterIdx} onPress={() => removeTag(t)} activeOpacity={0.7}>
                                     <View style={styles.removableChip}>
                                         <Text style={styles.chipLabel}>{t}</Text>
                                         <AppIcon name="close" size={11} color={Colors.mid} />
                                     </View>
-                                </TouchableOpacity>
+                                </Touchable>
                             ))}
                             <View style={styles.tagInputRow}>
                                 <TextInput
@@ -285,9 +285,9 @@ export default function CatalogItemScreen() {
                                     onSubmitEditing={addTag}
                                     returnKeyType="done"
                                 />
-                                <TouchableOpacity onPress={addTag} style={styles.tagAddBtn} accessibilityLabel="Add tag">
+                                <Touchable onPress={addTag} style={styles.tagAddBtn} accessibilityLabel="Add tag">
                                     <AppIcon name="add" size={16} color={Colors.black} />
-                                </TouchableOpacity>
+                                </Touchable>
                             </View>
                         </View>
                     </View>

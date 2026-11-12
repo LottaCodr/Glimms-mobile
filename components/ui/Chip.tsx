@@ -1,5 +1,6 @@
 import React from "react";
-import { StyleSheet, Text, TouchableOpacity } from "react-native";
+import { StyleSheet, Text } from "react-native";
+import { Touchable } from "@/components/motion";
 import { Colors, Radius } from "@/theme";
 import { AppIcon } from "./Icon";
 
@@ -14,7 +15,7 @@ type Props = {
 /** Filter/selection pill used in wardrobe filters, preferences editor, saved tabs. */
 export function Chip({ label, selected, onPress, icon, small }: Props) {
     return (
-        <TouchableOpacity
+        <Touchable
             onPress={onPress}
             activeOpacity={0.75}
             disabled={!onPress}
@@ -33,7 +34,7 @@ export function Chip({ label, selected, onPress, icon, small }: Props) {
             <Text style={[styles.text, small && { fontSize: 11 }, selected && { color: Colors.black }]}>
                 {label}
             </Text>
-        </TouchableOpacity>
+        </Touchable>
     );
 }
 

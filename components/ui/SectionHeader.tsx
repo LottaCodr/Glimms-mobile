@@ -1,5 +1,6 @@
 import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { Touchable } from "@/components/motion";
 import { Colors } from "@/theme";
 import { AppIcon } from "./Icon";
 
@@ -15,10 +16,10 @@ export function SectionHeader({ title, actionLabel, onAction }: Props) {
         <View style={styles.row}>
             <Text style={styles.title}>{title}</Text>
             {!!actionLabel && (
-                <TouchableOpacity onPress={onAction} style={styles.action} hitSlop={8} accessibilityRole="button">
+                <Touchable onPress={onAction} style={styles.action} hitSlop={8} accessibilityRole="button">
                     <Text style={styles.actionText}>{actionLabel}</Text>
                     <AppIcon name="chevron-forward" size={12} color={Colors.gold} />
-                </TouchableOpacity>
+                </Touchable>
             )}
         </View>
     );

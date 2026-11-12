@@ -20,7 +20,8 @@
         "NSPhotoLibraryAddUsageDescription": "GLIMMS saves design mockups to your photo library when you choose to export them.",
         "NSLocationWhenInUseUsageDescription": "GLIMMS uses your approximate location to tailor style suggestions to your local weather and climate.",
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "usesAppleSignIn": true
     },
     "android": {
       "package": "com.glimms.app",
@@ -94,7 +95,8 @@
         {
           "locationWhenInUsePermission": "Allow GLIMMS to use your location for climate-aware style recommendations."
         }
-      ]
+      ],
+      "expo-apple-authentication"
     ],
     "runtimeVersion": {
       "policy": "appVersion"

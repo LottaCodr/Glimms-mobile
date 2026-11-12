@@ -9,7 +9,6 @@ import {
     ScrollView,
     StyleSheet,
     Text,
-    TouchableOpacity,
     View,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -18,27 +17,37 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useSubscription } from "@/hooks/useSubscription";
 import { PricingCard } from "@/components/premium/PricingCard";
 import { useAuthStore } from "@/store/auth.store";
-import { Colors, Spacing, Typography } from "@/theme";
+import { Celebration, Enter, Shakeable, Touchable } from "@/components/motion";
+import { formatPrice } from "@/lib/subscription/plans";
+import { Colors, Radius, Spacing, Typography } from "@/theme";
 
 export default function PaywallScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
-    const { plans, plansLoading, plansError, refetchPlans, loading, error, subscribe } = useSubscription();
+    const { plans, plansLoading, plansError, refetchPlans, loading, error, subscribe, payWithCredo, credoPlans } = useSubscription();
     const paidPlans = plans.filter((p) => p.id !== "free");
-    const nothingForSale = !plansLoading && !plansError && !paidPlans.some((p) => p.purchasable);
+    const cardPlansForSale = paidPlans.some((p) => p.purchasable);
+    const nothingForSale = !plansLoading && !plansError && !cardPlansForSale && credoPlans.length === 0;
     const user = useAuthStore((s) => s.user);
     const [notice, setNotice] = useState<string | null>(null);
 
-    // Close automatically once the subscription activates (tier comes from /users/me).
+    const [celebrating, setCelebrating] = useState(false);
+    // The tier the user arrived with: a change from it is an upgrade to celebrate.
+    const [tierAtOpen] = useState(user?.tier ?? "free");
+
+    // Celebrate once the plan is active (the tier comes from /users/me).
     useEffect(() => {
-        if (user && user.tier !== "free") {
-            const t = setTimeout(() => {
-                setNotice(`Welcome to ${user.tier.toUpperCase()} — enjoy your expanded limits.`);
-                if (router.canGoBack()) router.back();
-            }, 1200);
-            return () => clearTimeout(t);
+        if (user && user.tier !== "free" && user.tier !== tierAtOpen) {
+            const timer = setTimeout(() => setCelebrating(true), 0);
+            return () => clearTimeout(timer);
         }
-    }, [user, router]);
+    }, [user, tierAtOpen]);
+
+    const report = (result: Awaited<ReturnType<typeof subscribe>>) => {
+        if (result === "cancelled") setNotice("Checkout closed — no charge was made.");
+        if (result === "pending") setNotice("Confirming your payment… your plan activates as soon as it clears.");
+        if (result === "failed") setNotice("The payment did not go through. No plan was activated.");
+    };
 
     return (
         <SafeAreaView style={styles.container} edges={["top"]}>
@@ -50,9 +59,9 @@ export default function PaywallScreen() {
                 <Text style={styles.sub}>
                     Free accounts get 10 scans a day. Upgrade for higher limits and priority AI.
                 </Text>
-                <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn} hitSlop={10}>
+                <Touchable onPress={() => router.back()} style={styles.closeBtn} hitSlop={10}>
                     <Ionicons name="close" size={22} color={Colors.text} />
-                </TouchableOpacity>
+                </Touchable>
             </View>
 
             <ScrollView
@@ -66,27 +75,59 @@ export default function PaywallScreen() {
                     </View>
                 )}
                 {plansError && (
-                    <TouchableOpacity onPress={() => refetchPlans()} accessibilityRole="button">
+                    <Touchable onPress={() => refetchPlans()} accessibilityRole="button">
                         <Text style={styles.error}>{"Couldn't load plans. Tap to try again."}</Text>
-                    </TouchableOpacity>
+                    </Touchable>
                 )}
                 {nothingForSale && (
                     <Text style={styles.notice}>{"Upgrades aren't available right now. Please check back soon."}</Text>
                 )}
 
-                {!plansLoading && !plansError && paidPlans.map((plan) => (
+                {!plansLoading && !plansError && (cardPlansForSale || credoPlans.length === 0) && paidPlans.map((plan, index) => (
+                    <Enter key={plan.id} index={index}>
                     <PricingCard
                         key={plan.id}
                         plan={plan}
                         onSelect={async (id) => {
                             setNotice(null);
-                            const result = await subscribe(id);
-                            if (result === "cancelled") setNotice("Checkout closed — no charge was made.");
-                            if (result === "pending") setNotice("Confirming your payment… this can take a minute.");
+                            report(await subscribe(id));
                         }}
                         loading={loading}
                     />
+                    </Enter>
                 ))}
+
+                {/* Naira passes through Credo: card or bank transfer, no auto-renewal. */}
+                {credoPlans.length > 0 && (
+                    <Enter index={3} style={styles.credo}>
+                        <Text style={styles.credoTitle}>Pay in naira</Text>
+                        <Text style={styles.credoSub}>
+                            Card or bank transfer, secured by Credo. One payment, no automatic renewal.
+                        </Text>
+                        {credoPlans.map((plan, enterIdx) => (
+                            <Touchable
+                                key={plan.tier} enterIndex={enterIdx}
+                                style={[styles.credoBtn, loading && { opacity: 0.5 }]}
+                                disabled={loading}
+                                haptic="light"
+                                onPress={async () => {
+                                    setNotice(null);
+                                    report(await payWithCredo(plan.tier));
+                                }}
+                                accessibilityLabel={`${plan.tier === "pro" ? "Pro" : "Premium"} for ${plan.periodDays} days, ${formatPrice(plan.amount, plan.currency)}`}
+                            >
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.credoPlan}>{plan.tier === "pro" ? "Pro" : "Premium"}</Text>
+                                    <Text style={styles.credoPeriod}>
+                                        {plan.periodDays} days{plan.feeOnTop ? " · processing fee added at checkout" : ""}
+                                    </Text>
+                                </View>
+                                <Text style={styles.credoPrice}>{formatPrice(plan.amount, plan.currency)}</Text>
+                                <Ionicons name="chevron-forward" size={16} color={Colors.gold} style={{ marginLeft: 6 }} />
+                            </Touchable>
+                        ))}
+                    </Enter>
+                )}
 
                 {loading && (
                     <View style={styles.statusRow}>
@@ -94,13 +135,28 @@ export default function PaywallScreen() {
                         <Text style={styles.statusText}>Opening secure checkout…</Text>
                     </View>
                 )}
-                {!!error && <Text style={styles.error}>{error}</Text>}
+                {!!error && (
+                    <Shakeable trigger={error}>
+                        <Text style={styles.error} accessibilityRole="alert">{error}</Text>
+                    </Shakeable>
+                )}
                 {!!notice && <Text style={styles.notice}>{notice}</Text>}
 
-                <TouchableOpacity onPress={() => router.back()} style={styles.maybeLater}>
+                <Touchable onPress={() => router.back()} style={styles.maybeLater}>
                     <Text style={{ color: Colors.mid, fontSize: 13 }}>Maybe later</Text>
-                </TouchableOpacity>
+                </Touchable>
             </ScrollView>
+
+            <Celebration
+                visible={celebrating}
+                emblem="◆"
+                title={`Welcome to ${user?.tier === "pro" ? "Pro" : "Premium"}`}
+                message="Your higher scan limits and priority styling are active."
+                onDone={() => {
+                    setCelebrating(false);
+                    if (router.canGoBack()) router.back();
+                }}
+            />
         </SafeAreaView>
     );
 }
@@ -119,4 +175,17 @@ const styles = StyleSheet.create({
     error: { color: Colors.error, fontSize: 13, textAlign: "center", marginTop: 12 },
     notice: { color: "#F59E0B", fontSize: 13, textAlign: "center", marginTop: 12 },
     maybeLater: { alignItems: "center", marginTop: 18 },
+    credo: {
+        marginTop: Spacing.md, padding: Spacing.md, borderRadius: Radius.lg,
+        backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border,
+    },
+    credoTitle: { fontSize: 16, fontWeight: "700", color: Colors.text },
+    credoSub: { fontSize: 12, color: Colors.mid, marginTop: 4, marginBottom: 12, lineHeight: 17 },
+    credoBtn: {
+        flexDirection: "row", alignItems: "center", paddingVertical: 14, paddingHorizontal: 14,
+        borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.gold, marginTop: 8,
+    },
+    credoPlan: { fontSize: 15, fontWeight: "700", color: Colors.text },
+    credoPeriod: { fontSize: 12, color: Colors.mid, marginTop: 2 },
+    credoPrice: { fontSize: 16, fontWeight: "700", color: Colors.gold },
 });

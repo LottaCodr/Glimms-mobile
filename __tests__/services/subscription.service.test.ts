@@ -87,3 +87,65 @@ describe("waitUntilActive", () => {
         expect(api.get).toHaveBeenCalledTimes(3); // first look + 2 retries
     });
 });
+
+describe("Credo (naira) payments", () => {
+    const openAuthSession = WebBrowser.openAuthSessionAsync as jest.Mock;
+
+    it("lists the passes the server sells, and none when the response is malformed", async () => {
+        const plans = [{ tier: "premium", currency: "NGN", amount: 250000, periodDays: 30, feeOnTop: false }];
+        api.get.mockResolvedValueOnce({ data: { plans } });
+        await expect(subscriptionService.credoPlans()).resolves.toEqual(plans);
+        expect(api.get).toHaveBeenCalledWith("/api/subscriptions/credo/plans");
+
+        api.get.mockResolvedValueOnce({ data: null });
+        await expect(subscriptionService.credoPlans()).resolves.toEqual([]);
+    });
+
+    it("opens Credo's checkout in a session that returns to the app", async () => {
+        api.post.mockResolvedValue({ data: { url: "https://pay.credocentral.com/checkout/abc", reference: "glm1" } });
+        openAuthSession.mockResolvedValue({ type: "success", url: "glimms://billing/return?status=paid" });
+
+        const { reference } = await subscriptionService.openCredoCheckout("premium");
+
+        expect(api.post).toHaveBeenCalledWith("/api/subscriptions/credo/checkout", { tier: "premium" });
+        expect(openAuthSession).toHaveBeenCalledWith("https://pay.credocentral.com/checkout/abc", "glimms://billing/return");
+        expect(reference).toBe("glm1");
+    });
+
+    it("accepts the sandbox checkout host", async () => {
+        api.post.mockResolvedValue({ data: { url: "https://pay.credodemo.com/checkout/abc", reference: "glm1" } });
+        openAuthSession.mockResolvedValue({ type: "dismiss" });
+        await expect(subscriptionService.openCredoCheckout("pro")).resolves.toMatchObject({ reference: "glm1" });
+    });
+
+    it.each([
+        "https://evil.example/checkout",
+        "https://pay.credocentral.com.evil.example/checkout",
+        "https://pay.credocentral.com@evil.example/checkout",
+        "https://evilcredocentral.com/checkout",
+        "http://pay.credocentral.com/checkout",
+        "javascript:alert(1)",
+        undefined,
+    ])("refuses to open %s", async (url) => {
+        openAuthSession.mockClear();
+        api.post.mockResolvedValue({ data: { url, reference: "glm1" } });
+
+        await expect(subscriptionService.openCredoCheckout("premium")).rejects.toMatchObject({ code: "UNTRUSTED_REDIRECT" });
+        expect(openAuthSession).not.toHaveBeenCalled();
+    });
+
+    it("polls the server until the payment is settled", async () => {
+        api.post
+            .mockResolvedValueOnce({ data: { status: "pending" } })
+            .mockResolvedValueOnce({ data: { status: "pending" } })
+            .mockResolvedValueOnce({ data: { status: "paid" } });
+
+        await expect(subscriptionService.waitForCredo("glm1", { intervalMs: 0 })).resolves.toBe("paid");
+        expect(api.post).toHaveBeenLastCalledWith("/api/subscriptions/credo/confirm", { reference: "glm1" });
+    });
+
+    it("reports a payment that never settles as pending", async () => {
+        api.post.mockResolvedValue({ data: { status: "pending" } });
+        await expect(subscriptionService.waitForCredo("glm1", { attempts: 2, intervalMs: 0 })).resolves.toBe("pending");
+    });
+});

@@ -1,5 +1,6 @@
 import React from 'react'
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
+import { View, Text, StyleSheet } from 'react-native'
+import { Enter, Pop, Touchable } from '@/components/motion'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Colors, Spacing, Typography } from '@/theme'
@@ -14,13 +15,13 @@ export default function WelcomeScreen() {
       <View style={styles.inner}>
 
         {/* Logo */}
-        <View style={styles.logoWrap}>
+        <Pop style={styles.logoWrap}>
           <BrandLogo variant="compact" width={132} />
           <Text style={styles.tagline}>STYLE INTELLIGENCE</Text>
-        </View>
+        </Pop>
 
         {/* Headline */}
-        <View style={styles.copy}>
+        <Enter index={2} style={styles.copy}>
           <Text style={styles.headline}>
             You already own{'\n'}
             <Text style={styles.headlineAccent}>your dream wardrobe</Text>
@@ -28,12 +29,12 @@ export default function WelcomeScreen() {
           <Text style={styles.sub}>
             AI-powered styling with what you already have — no shopping required
           </Text>
-        </View>
+        </Enter>
 
         {/* Actions */}
-        <View style={styles.actions}>
+        <Enter index={4} style={styles.actions}>
           <GoldButton label="Get Started" onPress={() => router.push('/(onboarding)/how-it-works' as any)} />
-          <TouchableOpacity
+          <Touchable
             onPress={() => router.push('/(auth)/login' as any)}
             style={styles.signInBtn}
             activeOpacity={0.7}
@@ -42,8 +43,8 @@ export default function WelcomeScreen() {
               Already have an account?{' '}
               <Text style={{ color: Colors.gold }}>Sign in</Text>
             </Text>
-          </TouchableOpacity>
-        </View>
+          </Touchable>
+        </Enter>
 
       </View>
     </SafeAreaView>

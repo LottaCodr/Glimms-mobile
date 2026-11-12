@@ -1,9 +1,9 @@
 /**
  * Push notifications — guide §13.
  *
- * The backend sends via firebase-admin, which expects **native FCM/APNs tokens**
- * (Notifications.getDevicePushTokenAsync), NOT Expo push tokens. Native tokens
- * require a dev build / production build.
+ * The API delivers through Expo's push service, so the device registers its
+ * **Expo push token** (`ExponentPushToken[…]`). No Firebase setup is needed in
+ * the app; Expo relays to APNs and FCM using the credentials held by EAS.
  *
  * IMPORTANT (SDK 53+): `expo-notifications` throws on load in **Expo Go on
  * Android** because remote-notification support was removed from that client.
@@ -78,6 +78,12 @@ export function configureNotificationHandler(): void {
     }
 }
 
+/** The EAS project the push token is issued for (set by `eas init`). */
+function easProjectId(): string | undefined {
+    const fromConfig = (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId;
+    return fromConfig ?? (Constants as { easConfig?: { projectId?: string } }).easConfig?.projectId;
+}
+
 function currentPlatform(): DevicePlatform {
     return (Platform.OS === "ios" ? "ios" : "android") as DevicePlatform;
 }
@@ -88,7 +94,7 @@ export const notificationService = {
     configureNotificationHandler,
 
     /**
-     * Request permission → fetch native FCM/APNs token → POST to the backend.
+     * Request permission → fetch the Expo push token → POST to the backend.
      * Returns the token, or null when unavailable (simulator / denied / Expo Go).
      */
     async registerDeviceToken(): Promise<string | null> {
@@ -105,8 +111,12 @@ export const notificationService = {
             }
             if (status !== "granted") return null;
 
-            const native = await Notifications.getDevicePushTokenAsync();
-            const token = String(native.data);
+            const projectId = easProjectId();
+            if (!projectId) {
+                if (__DEV__) console.warn("[notifications] No EAS project id in app config — push disabled.");
+                return null;
+            }
+            const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
             if (!token) return null;
 
             await apiClient.post("/api/notifications/device-token", {
@@ -115,7 +125,7 @@ export const notificationService = {
             });
             return token;
         } catch {
-            // Expo Go, missing google-services config, or a denied prompt — skip silently.
+            // Expo Go, no network, or a denied prompt — skip silently.
             return null;
         }
     },
