@@ -55,6 +55,12 @@ export async function signInWithApple(identityToken: string, name?: string): Pro
     return data;
 }
 
+/** Sign in or up by exchanging a verified Supabase Auth access_token for GLIMMS tokens. */
+export async function signInWithSupabase(accessToken: string): Promise<AuthTokens> {
+    const { data } = await apiClient.post<AuthTokens>("/api/auth/supabase", { accessToken });
+    return data;
+}
+
 /** Emails a reset link if the address has an account. The reply is the same either way. */
 export async function requestPasswordReset(email: string): Promise<void> {
     await apiClient.post("/api/auth/forgot-password", { email: email.trim().toLowerCase() });

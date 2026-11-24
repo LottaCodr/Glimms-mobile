@@ -8,6 +8,7 @@ import { useOfflineQueueStore } from "@/store/offlineQueue.store";
 import { router, Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
+import { Platform, StyleSheet, View } from "react-native";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -77,31 +78,53 @@ export default function RootLayout() {
     return (
         <QueryProvider>
             <ThemeProvider>
-                <AuthGate />
-                {/*
-                 * Every screen renders its own branded header, so no route should
-                 * fall back to a native title bar (which otherwise defaults to the
-                 * route path, e.g. "screens/scan"). `screenOptions` covers nested
-                 * routes like `screens/*` and `(auth)/*` that have no explicit
-                 * <Stack.Screen> entry.
-                 */}
-                <Stack screenOptions={{ headerShown: false }} initialRouteName="index">
-                    {/*
-                     * `index` must stay the initial route. Declaring modal screens
-                     * below reorders the navigator's routes (explicit screens come
-                     * first), which otherwise makes `preferences` the cold-start
-                     * route. Listing `index` first + initialRouteName pins the
-                     * splash as the entry point.
-                     */}
-                    <Stack.Screen name="index" />
-                    <Stack.Screen name="preferences" options={{ presentation: "modal" }} />
-                    <Stack.Screen name="paywall" options={{ presentation: "modal" }} />
-                    <Stack.Screen name="legal/terms" options={{ presentation: "modal" }} />
-                    <Stack.Screen name="legal/privacy" options={{ presentation: "modal" }} />
-                </Stack>
-                <OfflineBanner />
-                <Toaster />
+                <View style={Platform.OS === "web" ? styles.webOuter : styles.nativeRoot}>
+                    <View style={Platform.OS === "web" ? styles.webInner : styles.nativeRoot}>
+                        <AuthGate />
+                        {/*
+                         * Every screen renders its own branded header, so no route should
+                         * fall back to a native title bar (which otherwise defaults to the
+                         * route path, e.g. "screens/scan"). `screenOptions` covers nested
+                         * routes like `screens/*` and `(auth)/*` that have no explicit
+                         * <Stack.Screen> entry.
+                         */}
+                        <Stack screenOptions={{ headerShown: false }} initialRouteName="index">
+                            {/*
+                             * `index` must stay the initial route. Declaring modal screens
+                             * below reorders the navigator's routes (explicit screens come
+                             * first), which otherwise makes `preferences` the cold-start
+                             * route. Listing `index` first + initialRouteName pins the
+                             * splash as the entry point.
+                             */}
+                            <Stack.Screen name="index" />
+                            <Stack.Screen name="preferences" options={{ presentation: "modal" }} />
+                            <Stack.Screen name="paywall" options={{ presentation: "modal" }} />
+                            <Stack.Screen name="legal/terms" options={{ presentation: "modal" }} />
+                            <Stack.Screen name="legal/privacy" options={{ presentation: "modal" }} />
+                        </Stack>
+                        <OfflineBanner />
+                        <Toaster />
+                    </View>
+                </View>
             </ThemeProvider>
         </QueryProvider>
     );
 }
+
+const styles = StyleSheet.create({
+    nativeRoot: {
+        flex: 1,
+    },
+    webOuter: {
+        flex: 1,
+        backgroundColor: "#050507",
+        alignItems: "center",
+    },
+    webInner: {
+        flex: 1,
+        width: "100%",
+        maxWidth: 480,
+        backgroundColor: "#09090B",
+        overflow: "hidden",
+    },
+});
