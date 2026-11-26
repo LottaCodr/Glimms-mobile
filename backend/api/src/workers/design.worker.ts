@@ -5,6 +5,7 @@ import { config } from '../config';
 import { logger } from '../lib/logger';
 import { designsService } from '../services/designs.service';
 import { catalogService } from '../services/catalog.service';
+import { similarityService } from '../services/similarity.service';
 import { notificationsService } from '../services/notifications.service';
 import { designJobsRepository, designSessionsRepository } from '../repositories';
 import type { DesignSession } from '../models';
@@ -343,6 +344,18 @@ async function runSessionPipeline(job: Job<any>): Promise<void> {
     }
     await setStep('attributes', 'completed', 50, { itemCount: enrichedItems.length });
 
+    // Items with a real style vector. Offline-fallback vectors are not
+    // comparable to anything, so they are neither searched nor linked.
+    const hasRealVector = (it: any) => Array.isArray(it.embedding) && it.embedding.length > 0 && it.embedding_model !== 'fallback';
+    const vectorIdFor = (it: any) => `${userId}:${it.id}`; // owner-prefixed so a deleted account's vectors can be found
+
+    // "You already own this": compare each new item with the user's existing
+    // ones. Runs before the new vectors are stored, or each would match itself.
+    const duplicates = await similarityService.findDuplicates(
+      userId, verticalVal,
+      enrichedItems.filter(hasRealVector).map((it: any) => ({ key: it.id as string, embedding: it.embedding as number[] })),
+    );
+
     // Save enriched items to catalog (non-blocking)
     const catalogItems = enrichedItems.map((item: any) => ({
       vertical: verticalVal,
@@ -355,7 +368,14 @@ async function runSessionPipeline(job: Job<any>): Promise<void> {
       pattern:     item.texture?.pattern,
       tags:        [],
       styleTags:   (item.style_tags as string[]) ?? [],
-      attributes:  { bbox: item.bbox, embedding_dimension: item.embedding_dimension },
+      attributes:  {
+        bbox: item.bbox,
+        embedding_dimension: item.embedding_dimension,
+        ...(hasRealVector(item) ? { vectorId: vectorIdFor(item) } : {}),
+        ...(duplicates.has(item.id)
+          ? { duplicateOf: duplicates.get(item.id)!.itemId, duplicateSimilarity: duplicates.get(item.id)!.similarity }
+          : {}),
+      },
     }));
     await catalogService.bulkCreate(userId, catalogItems).catch(e => logger.warn({ err: (e as any).message }, 'Catalog bulk-create failed (non-fatal)'));
 
@@ -364,14 +384,14 @@ async function runSessionPipeline(job: Job<any>): Promise<void> {
     const vectors = enrichedItems
       .filter((it:any)=> Array.isArray(it.embedding) && it.embedding.length)
       .map((it:any)=> ({
-        // Prefixed with the owner so a deleted account's vectors can be found.
-        id: `${userId}:${it.id}`,
+        id: vectorIdFor(it),
         embedding: it.embedding,
         metadata: {
           user_id: userId,
           session_id: sessionId,
           vertical: verticalVal,
           label: it.label,
+          category: it.category,
           model_version: it.embedding_model ?? 'clip-vit-base-patch32-v1',
         }
       }));

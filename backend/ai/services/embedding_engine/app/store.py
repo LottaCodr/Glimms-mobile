@@ -133,6 +133,10 @@ class EmbeddingStore:
                     return False
                 if "$eq" in expected and actual != expected["$eq"]:
                     return False
+                if "$ne" in expected and actual == expected["$ne"]:
+                    return False
+                if "$nin" in expected and actual in expected["$nin"]:
+                    return False
             elif actual != expected:
                 return False
         return True
@@ -175,6 +179,49 @@ class EmbeddingStore:
             scored.append({"id": identifier, "score": score, "metadata": metadata})
         scored.sort(key=lambda value: (-value["score"], value["id"]))
         return scored[:top_k]
+
+    def search_by_id(
+        self,
+        identifier: str,
+        top_k: int = 10,
+        namespace: str | None = None,
+        filter_value: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]] | None:
+        """Nearest neighbours of a stored vector, without the vector itself.
+
+        Returns ``None`` when no vector has that id.  The caller's filter still
+        applies to the results, so a search stays scoped to one user.
+        """
+
+        identifier = str(identifier).strip()
+        if not identifier:
+            raise ValueError("id is required")
+        top_k = min(max(int(top_k), 1), 100)
+        namespace = (namespace or self.namespace).strip() or self.namespace
+        remote = self._pinecone_index()
+        if remote is not None:
+            fetched = remote.fetch(ids=[identifier], namespace=namespace)
+            vectors = fetched.get("vectors", {}) if isinstance(fetched, dict) else getattr(fetched, "vectors", {})
+            if not vectors or identifier not in vectors:
+                return None
+            query: dict[str, Any] = {
+                "id": identifier,
+                "top_k": min(top_k + 1, 100),  # the vector is its own nearest neighbour
+                "namespace": namespace,
+                "include_metadata": True,
+            }
+            if filter_value:
+                query["filter"] = filter_value
+            response = remote.query(**query)
+            matches = response.get("matches", []) if isinstance(response, dict) else getattr(response, "matches", [])
+            results = [self._match_to_dict(match) for match in matches]
+        else:
+            with self._lock:
+                stored = self._vectors.get(namespace, {}).get(identifier)
+            if stored is None:
+                return None
+            results = self.search(stored[0].tolist(), top_k=min(top_k + 1, 100), namespace=namespace, filter_value=filter_value)
+        return [match for match in results if match["id"] != identifier][:top_k]
 
     def delete(self, ids: list[str], namespace: str | None = None) -> int:
         if not ids:

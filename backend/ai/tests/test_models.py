@@ -381,6 +381,9 @@ class _FakeIndex:
     def delete(self, **kwargs):
         self.deletes.append(kwargs)
 
+    def fetch(self, ids, namespace=None):
+        return {"vectors": {identifier: {"id": identifier} for identifier in ids if identifier != "missing"}}
+
 
 def _remote_store():
     from services.embedding_engine.app.store import EmbeddingStore
@@ -632,3 +635,70 @@ def test_owner_delete_rejects_an_empty_owner():
 
     with pytest.raises(ValueError):
         EmbeddingStore().delete_owner("  ")
+
+
+# -- neighbours of a stored vector -------------------------------------------
+
+
+def test_memory_store_finds_neighbours_of_a_stored_vector_within_the_filter():
+    from services.embedding_engine.app.store import EmbeddingStore
+
+    store = EmbeddingStore()
+    store.upsert(
+        [
+            ("u1:shirt", [1.0, 0.0], {"user_id": "u1", "category": "top"}),
+            ("u1:blouse", [0.95, 0.05], {"user_id": "u1", "category": "top"}),
+            ("u1:jeans", [0.6, 0.4], {"user_id": "u1", "category": "bottom"}),
+            ("u2:shirt", [1.0, 0.0], {"user_id": "u2", "category": "top"}),  # another user's identical item
+        ]
+    )
+
+    matches = store.search_by_id("u1:shirt", top_k=5, filter_value={"user_id": "u1"})
+    assert [match["id"] for match in matches] == ["u1:blouse", "u1:jeans"]  # never itself, never u2's
+
+    other_categories = store.search_by_id(
+        "u1:shirt", top_k=5, filter_value={"user_id": "u1", "category": {"$ne": "top"}}
+    )
+    assert [match["id"] for match in other_categories] == ["u1:jeans"]
+
+    assert store.search_by_id("u1:shirt", top_k=1, filter_value={"user_id": "u1"})[0]["id"] == "u1:blouse"
+    assert store.search_by_id("u1:unknown") is None
+
+
+def test_pinecone_neighbour_search_queries_by_id_with_the_filter_and_drops_itself():
+    store, index = _remote_store()
+    matches = store.search_by_id("a", top_k=3, namespace="items", filter_value={"user_id": "u1"})
+
+    assert matches == []  # the fake's only match is the vector itself
+    assert index.queries[0]["id"] == "a" and "vector" not in index.queries[0]
+    assert index.queries[0]["filter"] == {"user_id": "u1"}
+    assert index.queries[0]["top_k"] == 4  # one extra, because the vector matches itself
+
+    assert store.search_by_id("missing") is None
+    assert len(index.queries) == 1  # nothing is queried for an id that is not stored
+
+
+def test_search_endpoint_accepts_a_stored_id(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setenv("GLIMMS_ENV", "development")
+    monkeypatch.delenv("AI_INTERNAL_TOKEN", raising=False)
+    from services.embedding_engine.app import router as embedding_router
+    from services.embedding_engine.app.store import EmbeddingStore
+    from fastapi import FastAPI
+
+    monkeypatch.setattr(embedding_router, "store", EmbeddingStore())
+    app = FastAPI()
+    app.include_router(embedding_router.router)
+    client = TestClient(app)
+
+    client.post("/upsert", json={"vectors": [
+        {"id": "u1:a", "embedding": [1.0, 0.0], "metadata": {"user_id": "u1"}},
+        {"id": "u1:b", "embedding": [0.9, 0.1], "metadata": {"user_id": "u1"}},
+    ]})
+
+    found = client.post("/search", json={"id": "u1:a", "top_k": 5, "filter": {"user_id": "u1"}}).json()
+    assert found["found"] is True and [match["id"] for match in found["matches"]] == ["u1:b"]
+
+    absent = client.post("/search", json={"id": "u1:zzz"}).json()
+    assert absent == {"matches": [], "found": False, "namespace": absent["namespace"]}

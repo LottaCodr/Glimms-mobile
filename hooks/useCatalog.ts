@@ -4,11 +4,12 @@
  */
 import {
     useInfiniteQuery,
+    useQuery,
     useMutation,
     useQueryClient,
 } from "@tanstack/react-query";
 import { catalogService } from "@/services/catalog.service";
-import type { CatalogFilters, CatalogItem } from "@/types/api";
+import type { CatalogFilters, CatalogItem, SimilarityMode } from "@/types/api";
 
 export function useCatalog(filters: CatalogFilters) {
     return useInfiniteQuery({
@@ -45,5 +46,16 @@ export function useDeleteCatalogItem() {
             qc.invalidateQueries({ queryKey: ["catalog"] });
             qc.invalidateQueries({ queryKey: ["analytics", "me"] });
         },
+    });
+}
+
+/** Visually similar items (`similar`) or matching pieces from other categories (`pairs`). */
+export function useSimilarItems(id: string | undefined, mode: SimilarityMode) {
+    return useQuery({
+        queryKey: ["catalog", "similar", id, mode],
+        queryFn: () => catalogService.similar(id!, mode),
+        enabled: !!id,
+        staleTime: 5 * 60_000, // image links last 15 minutes
+        retry: false, // optional section: fail quietly rather than keep the screen busy
     });
 }

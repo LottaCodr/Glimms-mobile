@@ -130,6 +130,23 @@ example one fine-tuned on your own catalogue), `CLIP_MODEL_PATH`,
 > interior data will be more accurate, and the 0.25 threshold has not been
 > tuned against Glimms photos. Evaluate on real uploads before launch.
 
+### Evaluate on real photos
+
+Once the models are in `./models`, run them over a folder of real photos:
+
+```bash
+pip install -r requirements.txt
+python scripts/evaluate_models.py path/to/photos --vertical wardrobe
+open evaluation/report.html
+```
+
+The report shows every photo with its detection boxes, each item's crop,
+label, confidence, style tags and colour, and the most similar item pairs.
+Use it to choose `CONFIDENCE_THRESHOLD` and the API's `DUPLICATE_SIMILARITY`
+(photograph a few items twice to see what score real duplicates get). If the
+models are missing, the report says its output is placeholder data.
+`evaluation/` is git-ignored because it contains the photos.
+
 Still configured through credentials rather than files:
 
 - **Pinecone** — set `PINECONE_API_KEY` and `PINECONE_INDEX`. Create the index
@@ -204,6 +221,17 @@ curl -X POST http://localhost:8003/upsert \
 curl -X POST http://localhost:8003/search \
   -H 'content-type: application/json' \
   -d '{"embedding":[0.9,0.1,0],"top_k":5}'
+```
+
+`/search` also accepts the `id` of a stored vector instead of an embedding. It
+returns that vector's nearest neighbours (never the vector itself) and
+`"found": false` when the id is not stored. `filter` supports plain equality
+and `$eq`, `$ne`, `$in`, `$nin`.
+
+```bash
+curl -X POST http://localhost:8003/search \
+  -H 'content-type: application/json' \
+  -d '{"id":"top-1","top_k":5,"filter":{"user_id":"u1"}}'
 ```
 
 ## Configuration

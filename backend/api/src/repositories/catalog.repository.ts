@@ -102,6 +102,18 @@ export const catalogRepository = {
     return rows[0] ? catalogItems.toEntity(rows[0]) : null;
   },
 
+  /** The user's active items whose style vector is one of `vectorIds` (attributes.vectorId). */
+  async findActiveByVectorIds(userId: string, vectorIds: string[], db: Queryable = getDb()): Promise<CatalogItem[]> {
+    if (vectorIds.length === 0) return [];
+    const { rows } = await db.query(
+      `select ${catalogItems.columns} from catalog_items
+       where user_id = $1 and is_active and attributes ? 'vectorId'
+         and attributes ->> 'vectorId' = any($2::text[])`,
+      [userId, vectorIds],
+    );
+    return catalogItems.toEntities(rows);
+  },
+
   async update(
     id: string,
     patch: Partial<Pick<CatalogItem, 'label' | 'tags' | 'styleTags' | 'attributes' | 'isActive'>>,

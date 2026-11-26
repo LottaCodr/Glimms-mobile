@@ -791,8 +791,34 @@ Body: { label?, tags?[], styleTags?[], attributes?{} }
 → 200 CatalogItem
 
 DELETE /api/catalog/:id
-→ { message:"Item removed from catalog" } (soft: isActive=false)
+→ { message:"Item removed from catalog" } (soft: isActive=false; the item's style vector is deleted)
+
+GET  /api/catalog/:id/similar?mode=similar|pairs&limit=6
+→ { available: boolean, items: (CatalogItem & { similarity: 0-1, imageUrl: string|null })[] }
 ```
+
+### Visual similarity
+
+Each scanned item has a style vector (a CLIP image embedding). `GET /api/catalog/:id/similar`
+compares it with the same user's other items in the same vertical:
+
+- `mode=similar` (default): the closest matches, usually the same kind of item.
+- `mode=pairs`: the closest matches from **other categories**. This is visual
+  closeness (colour, texture, style), not a styling rule; use it as "goes with" suggestions.
+- `limit`: 1–20, default 6. Results are closest first.
+- `available: false`: the item has no style vector (added by hand, scanned before this
+  feature, or scanned while the AI ran without its CLIP model). Hide the section.
+- Errors: 404 / 403 as for `GET /:id`; `503 SIMILARITY_UNAVAILABLE` when the vector
+  index cannot be reached. Hide the section.
+
+**Duplicates.** When a scan detects an item that looks like one the user already has
+(similarity ≥ `DUPLICATE_SIMILARITY`, default 0.93), the new catalog item is still created
+and carries `attributes.duplicateOf` (the existing item's id) and
+`attributes.duplicateSimilarity`. Show a "you may already have this" hint; the user decides
+whether to delete it. The default threshold is a starting point and has not been tuned on
+real photos (see `backend/ai/scripts/evaluate_models.py`).
+
+`attributes.vectorId` is internal. Do not display or edit it.
 
 ### Implementation guide
 

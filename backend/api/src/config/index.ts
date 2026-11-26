@@ -54,6 +54,9 @@ const schema = z.object({
   AI_TIMEOUT_MULTIPLIER:       blankAsUndefined(z.string().default('1')),
   // Treat 'degraded' AI services (model_loaded:false / in-memory vector store,
   // i.e. the lightweight fallback build) as ready in GET /health/ready.
+  // Cosine similarity (0–1) of two style vectors above which a newly scanned
+  // item is flagged as one the user already owns.
+  DUPLICATE_SIMILARITY:        blankAsUndefined(z.coerce.number().min(0.5).max(1).default(0.93)),
   AI_ALLOW_DEGRADED:           blankAsUndefined(z.enum(['true','false']).default('false')),
   // Upper bound on any single AI call. The gateway's slow paths (LLM reasoning,
   // mockup composition) need ~120s; a cold instance adds 30-60s on top.
@@ -247,6 +250,7 @@ export const config = {
   aiBreakerResetMs:   positiveNumber(e.AI_BREAKER_RESET_MS, 30_000),
   /** Whether GET /health/ready passes when services run offline/fallback backends. */
   aiAllowDegraded: e.AI_ALLOW_DEGRADED === 'true',
+  duplicateSimilarity: e.DUPLICATE_SIMILARITY,
 
   paystack: {
     secretKey:    e.PAYSTACK_SECRET_KEY,

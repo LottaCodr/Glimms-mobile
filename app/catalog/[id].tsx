@@ -26,10 +26,18 @@ import { Chip } from "@/components/ui/Chip";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { SimilarItemsRow } from "@/components/catalog/SimilarItemsRow";
 import { catalogService } from "@/services/catalog.service";
 import { useDeleteCatalogItem, useUpdateCatalogItem } from "@/hooks/useCatalog";
 import { toast } from "@/store/toast.store";
 import type { CatalogItem } from "@/types/api";
+
+/** Attributes the app uses itself and does not list under "Details". */
+const INTERNAL_ATTRIBUTES = new Set(["vectorId", "duplicateOf", "duplicateSimilarity", "embedding_dimension"]);
+
+function visibleAttributes(attributes: Record<string, unknown>) {
+    return Object.entries(attributes).filter(([key]) => !INTERNAL_ATTRIBUTES.has(key));
+}
 
 function PaletteSwatch({ hex, label }: { hex: string; label: string }) {
     return (
@@ -230,6 +238,29 @@ export default function CatalogItemScreen() {
                         </Text>
                     </View>
 
+                    {/* Flagged at scan time: looks like an item already in the catalog */}
+                    {typeof item.attributes?.duplicateOf === "string" && (
+                        <Touchable
+                            style={styles.duplicateCard}
+                            onPress={() => router.push(`/catalog/${item.attributes.duplicateOf as string}` as never)}
+                            accessibilityRole="button"
+                            accessibilityLabel="This looks like an item you already have. Open that item."
+                        >
+                            <AppIcon name="copy-outline" size={18} color={Colors.gold} />
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.duplicateTitle}>You may already have this</Text>
+                                <Text style={styles.duplicateText}>
+                                    It looks
+                                    {typeof item.attributes.duplicateSimilarity === "number"
+                                        ? ` ${Math.round(item.attributes.duplicateSimilarity * 100)}%`
+                                        : " very"}{" "}
+                                    like another item in your catalog. Tap to compare.
+                                </Text>
+                            </View>
+                            <AppIcon name="chevron-forward" size={16} color={Colors.mid} />
+                        </Touchable>
+                    )}
+
                     {/* Colour palette */}
                     {!!item.color && (
                         <View style={styles.section}>
@@ -292,12 +323,25 @@ export default function CatalogItemScreen() {
                         </View>
                     </View>
 
+                    <SimilarItemsRow
+                        itemId={item.id}
+                        mode="pairs"
+                        title="GOES WITH"
+                        onOpen={(otherId) => router.push(`/catalog/${otherId}` as never)}
+                    />
+                    <SimilarItemsRow
+                        itemId={item.id}
+                        mode="similar"
+                        title="SIMILAR ITEMS YOU OWN"
+                        onOpen={(otherId) => router.push(`/catalog/${otherId}` as never)}
+                    />
+
                     {/* Attributes */}
-                    {!!item.attributes && Object.keys(item.attributes).length > 0 && (
+                    {!!item.attributes && visibleAttributes(item.attributes).length > 0 && (
                         <View style={styles.section}>
                             <Text style={styles.sectionLabel}>DETAILS</Text>
                             <View style={styles.attrsCard}>
-                                {Object.entries(item.attributes).map(([k, v]) => (
+                                {visibleAttributes(item.attributes).map(([k, v]) => (
                                     <View key={k} style={styles.attrRow}>
                                         <Text style={styles.attrKey}>{k}</Text>
                                         <Text style={styles.attrValue} numberOfLines={2}>
@@ -373,6 +417,19 @@ const styles = StyleSheet.create({
     },
     confChipText: { color: "#fff", fontSize: 10, fontWeight: "600" },
     section: { marginTop: Spacing.lg },
+    duplicateCard: {
+        marginTop: Spacing.lg,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: Spacing.sm,
+        padding: Spacing.md,
+        borderRadius: Radius.md,
+        backgroundColor: Colors.card,
+        borderWidth: 1,
+        borderColor: Colors.gold,
+    },
+    duplicateTitle: { fontSize: 14, color: Colors.text, fontWeight: "600" },
+    duplicateText: { fontSize: 12, lineHeight: 17, color: Colors.mid, marginTop: 2 },
     sectionLabel: {
         fontSize: 10,
         letterSpacing: 1.6,
